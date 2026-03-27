@@ -1,0 +1,1444 @@
+"use client";
+
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { MOCK_USERS } from "@/lib/mockData";
+
+// ── 時間帯背景 ──────────────────────────────────────────────────────────
+
+type ToD = "morning" | "day" | "evening" | "night";
+
+const TIME_BG: Record<ToD, string> = {
+  morning: "linear-gradient(185deg,#3A8CC0 0%,#70B8DA 16%,#F8CE70 42%,#FFC090 62%,#FFE4CC 82%,#FFF8F0 100%)",
+  day:     "linear-gradient(180deg,#0C5A9C 0%,#2880BC 22%,#4CAAD8 48%,#94CDE8 72%,#D4ECFA 90%,#EEF8FF 100%)",
+  evening: "linear-gradient(185deg,#040114 0%,#180448 12%,#560878 28%,#B0165A 50%,#E43018 68%,#F87028 84%,#FFAE40 100%)",
+  night:   "linear-gradient(190deg,#010108 0%,#030318 28%,#070540 58%,#040320 80%,#010108 100%)",
+};
+
+const getToD = (h: number): ToD =>
+  h >= 5 && h < 10 ? "morning" : h >= 10 && h < 17 ? "day" : h >= 17 && h < 20 ? "evening" : "night";
+
+// ── ダミーデータ ────────────────────────────────────────────────────────
+
+// handle は name（短縮名）を使用 → /profile/${name} でルーティング
+const FRIENDS_MOCK = MOCK_USERS
+  .filter((u) => u.isFriend)
+  .map((u) => ({ name: u.name, handle: u.name, avatar: u.avatar }));
+
+const MSGS = [
+  "神すぎる","泣いてる","最高かよ","鳥肌やばい","震えてる",
+  "叫びたい","魂が揺れる","やばすぎ","感動した","泣きそう",
+  "声でない","音が刺さる","心が震える","涙止まらん","生きてる",
+  "全身鳥肌","また来たい","好きすぎる","今日最高","絶対泣く",
+  "前の熱量","声が枯れそう","この感覚","なんかもう泣いてる",
+  "この空間最高","誰かと分かち合いたい","もう帰りたくない",
+  "今日来てよかった","語彙力が消えた","時間よ止まれ",
+];
+const AVATARS = ["🌸","🎨","📸","🖊️","💻","☕","🌙","⭐","🎸","🌿","🎵","🌊","🏄","🎮","🎧","🌺","🦋","🎻","🧘","🎪","🦊","🌈","💫","🎭","🍀"];
+
+// ── 定数 ────────────────────────────────────────────────────────────────
+
+const LANE_COUNT       = 7;
+const MAX_BUBBLES      = 49;
+const MAX_CHARS        = 15;
+const INPUT_H          = 68;
+const BUBBLE_LIFETIME  = 20;      // 秒
+const DANGER_THRESHOLD = 5;       // 残り5秒で消滅予兆
+const RESTITUTION      = 0.4;     // 左右壁バウンド係数
+const BUBBLE_H         = 40;      // バブル高さ概算（px）
+const HEADER_H         = 48;      // ヘッダー高さ（px）
+const BURST_LINE_Y     = 60;      // 破裂ライン（画面上端からのpx）— ここにBubble上辺が達したら破裂
+const SAFE_MARGIN      = 80;      // レーン内重なり防止マージン（px）
+const LANE_SAFE_SEC    = 2.0;     // 同じ列に出す最小間隔（秒）
+
+// 7列レーン（幅比率）
+const LANES = [0.06, 0.20, 0.34, 0.48, 0.62, 0.76, 0.90];
+
+const REACTION_MESSAGES = [
+  "一期一会",
+  "記憶が弾けた",
+  "泡が昇華した…",
+  "また会いましょう",
+  "消えゆく瞬間…",
+  "パチン！",
+];
+
+const REACT_EMOJIS = ["❤️", "😂", "😮", "😢", "👏"];
+
+// ── 型定義 ──────────────────────────────────────────────────────────────
+
+interface Bubble {
+  id:        string;
+  text:      string;
+  avatar:    string;
+  handle:    string;
+  isOwn:     boolean;
+  lane:      number;
+  left:      number;
+  width:     number;
+  startTime: number;
+  vx:        number;
+  vy:        number;
+  timeLeft:  number;
+  x:         number;
+  y:         number;
+  textColor: string;
+  paused:    boolean;
+}
+
+interface PopBurst {
+  id:        string;
+  x:         number;
+  y:         number;
+  particles: Array<{ id: number; dx: string; dy: string; size: number }>;
+}
+
+interface BurstMessage {
+  id:   number;
+  x:    number;
+  y:    number;
+  text: string;
+}
+
+interface FloatingEmoji {
+  id:     number;
+  left:   number;   // % (bottom起点モード用)
+  emoji:  string;
+  size:   number;
+  delay:  number;
+  fieldX?: number;  // px (フィールド座標モード)
+  fieldY?: number;  // px (フィールド座標モード)
+}
+
+// ── ヘルパー ────────────────────────────────────────────────────────────
+
+const makeId = () => Math.random().toString(36).slice(2, 9);
+
+// ── BubbleItem ──────────────────────────────────────────────────────────
+
+function BubbleItem({ b, onTap, onQuickLike, setRef, timeLeft, isLiked }: {
+  b:           Bubble;
+  onTap:       (clientX: number, clientY: number) => void;
+  onQuickLike: () => void;
+  setRef:      (el: HTMLDivElement | null) => void;
+  timeLeft:    number;
+  isLiked:     boolean;
+}) {
+  const [isNew, setIsNew]       = useState(true);
+  const physicsInitRef           = useRef(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setIsNew(false), 400);
+    return () => clearTimeout(t);
+  }, []);
+
+  const isDanger = timeLeft <= DANGER_THRESHOLD;
+
+  return (
+    <div
+      ref={el => {
+        if (el && !physicsInitRef.current) {
+          // b.y はコンテナ座標 → フィールド div 内 translate に変換
+          el.style.transform = `translate(${b.x}px, ${b.y - HEADER_H}px)`;
+          physicsInitRef.current = true;
+        }
+        setRef(el);
+      }}
+      style={{
+        position:   "absolute",
+        top:        0,
+        left:       0,
+        width:      b.width,
+        willChange: "transform",
+        cursor:     b.isOwn ? "default" : "pointer",
+        pointerEvents: b.isOwn ? "none" : "auto",
+        WebkitTapHighlightColor: "transparent",
+        userSelect: "none",
+      }}
+      onClick={b.isOwn ? undefined : e => onTap(e.clientX, e.clientY)}
+    >
+      {/* 出現アニメーション + 危険時グロー */}
+      <div style={{
+        animation: isNew ? "bubbleSpawn 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards" : "none",
+        filter:    isDanger ? "drop-shadow(0 0 8px rgba(255,255,255,0.9))" : "none",
+        transition:"filter 0.3s ease",
+      }}>
+        {/* バブル本体 */}
+        <div style={{
+          position:             "relative",
+          display:              "flex",
+          alignItems:           "center",
+          gap:                  6,
+          padding:              "5px 8px 5px 5px",
+          background:           "rgba(255,255,255,0.08)",
+          borderRadius:         20,
+          border:               "1.5px solid #C9A84C",
+          boxShadow:            "inset 0 1px 2px rgba(255,255,255,0.15)",
+          animation:            isDanger ? "pururu 0.4s ease-in-out infinite" : "none",
+          backdropFilter:       "blur(2px)",
+          WebkitBackdropFilter: "blur(2px)",
+          overflow:             "hidden",
+        }}>
+          {/* 光沢ハイライト */}
+          <div style={{
+            position:     "absolute",
+            top:          3,
+            left:         6,
+            width:        "25%",
+            height:       "50%",
+            borderRadius: "50%",
+            background:   "linear-gradient(135deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 100%)",
+            pointerEvents:"none",
+          }} />
+          {/* ユーザーアイコン（左端） */}
+          {!b.isOwn && (
+            <div style={{
+              width:          24,
+              height:         24,
+              borderRadius:   "50%",
+              background:     "rgba(201,168,76,0.15)",
+              border:         "1px solid rgba(201,168,76,0.35)",
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "center",
+              fontSize:       13,
+              flexShrink:     0,
+              lineHeight:     1,
+            }}>
+              {b.avatar}
+            </div>
+          )}
+          <span style={{
+            flex:         1,
+            minWidth:     0,
+            fontSize:     11,
+            fontWeight:   600,
+            color:        b.textColor,
+            whiteSpace:   "nowrap",
+            overflow:     "hidden",
+            textOverflow: "ellipsis",
+            letterSpacing:"0.01em",
+          }}>
+            {b.text}
+          </span>
+          {/* 👍 ワンタップリアクションボタン */}
+          {!b.isOwn && (
+            <div
+              onClick={e => { e.stopPropagation(); onQuickLike(); }}
+              style={{
+                marginLeft:              2,
+                width:                   26,
+                height:                  26,
+                borderRadius:            "50%",
+                background:              isLiked ? "rgba(201,168,76,0.28)" : "rgba(255,255,255,0.06)",
+                border:                  isLiked ? "1px solid rgba(201,168,76,0.60)" : "1px solid rgba(255,255,255,0.14)",
+                boxShadow:               isLiked ? "0 0 8px rgba(201,168,76,0.50)" : "none",
+                display:                 "flex",
+                alignItems:              "center",
+                justifyContent:          "center",
+                fontSize:                12,
+                flexShrink:              0,
+                cursor:                  "pointer",
+                transition:              "background 0.2s, border 0.2s, box-shadow 0.2s",
+                WebkitTapHighlightColor: "transparent",
+              }}
+            >
+              👍
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── アクションメニュー（タップ） ─────────────────────────────────────────
+
+interface ActionMenuState {
+  bubbleId: string;
+  bubble:   Bubble;
+  clientX:  number;
+  clientY:  number;
+}
+
+interface DMSheetState {
+  bubbleId: string;
+  userName: string;
+  userIcon: string;
+}
+
+const ACTION_MENU_W = 264;
+
+function BubbleActionMenu({ menu, onReact, onDm, onProfile, onClose }: {
+  menu:      ActionMenuState;
+  onReact:   (emoji: string) => void;
+  onDm:      () => void;
+  onProfile: () => void;
+  onClose:   () => void;
+}) {
+  const vw = typeof window !== "undefined" ? window.innerWidth  : 390;
+  const vh = typeof window !== "undefined" ? window.innerHeight : 844;
+  const MARGIN = 10;
+  const CARD_H = 216;
+
+  let left = menu.clientX - ACTION_MENU_W / 2;
+  let top  = menu.clientY - CARD_H - 14;
+  if (top < 56)                top = menu.clientY + 14;
+  if (top + CARD_H > vh - 80) top = vh - CARD_H - 90;
+  left = Math.max(MARGIN, Math.min(left, vw - ACTION_MENU_W - MARGIN));
+
+  return (
+    <>
+      {/* 透明オーバーレイ */}
+      <div
+        style={{ position: "fixed", inset: 0, zIndex: 28 }}
+        onClick={onClose}
+      />
+      {/* カード本体 */}
+      <div
+        style={{
+          position:             "fixed",
+          left,
+          top,
+          width:                ACTION_MENU_W,
+          zIndex:               29,
+          background:           "#0d0d1a",
+          border:               "0.5px solid rgba(201,168,76,0.32)",
+          borderRadius:         20,
+          padding:              "14px",
+          boxShadow:            "0 8px 36px rgba(0,0,0,0.65), 0 0 0 0.5px rgba(255,255,255,0.05)",
+          backdropFilter:       "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
+          animation:            "menuPopIn 0.18s cubic-bezier(0.34,1.56,0.64,1) forwards",
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* ユーザー情報 */}
+        <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
+          <div style={{
+            width:24, height:24, borderRadius:"50%",
+            background:"rgba(201,168,76,0.15)", border:"1px solid rgba(201,168,76,0.35)",
+            display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, flexShrink:0,
+          }}>
+            {menu.bubble.avatar}
+          </div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ fontSize:12, fontWeight:700, color:"#C9A84C", lineHeight:1.3, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+              {menu.bubble.text.slice(0, 14)}
+            </div>
+            <div style={{ fontSize:10, color:"rgba(255,255,255,0.38)", lineHeight:1.2 }}>
+              バブル
+            </div>
+          </div>
+        </div>
+
+        {/* リアクション行（28px・44pxタップ領域・12px gap） */}
+        <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
+          {REACT_EMOJIS.map(emoji => (
+            <button
+              key={emoji}
+              onClick={() => { onReact(emoji); onClose(); }}
+              style={{
+                flex:1, height:44, border:"1px solid rgba(255,255,255,0.10)",
+                borderRadius:12, background:"rgba(255,255,255,0.06)",
+                fontSize:28, display:"flex", alignItems:"center", justifyContent:"center",
+                cursor:"pointer", WebkitTapHighlightColor:"transparent",
+                transition:"transform 0.12s ease, background 0.12s ease",
+              }}
+              onPointerEnter={e => { const b = e.currentTarget as HTMLButtonElement; b.style.background = "rgba(255,255,255,0.13)"; b.style.transform = "scale(1.18)"; }}
+              onPointerLeave={e => { const b = e.currentTarget as HTMLButtonElement; b.style.background = "rgba(255,255,255,0.06)"; b.style.transform = "scale(1)"; }}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+
+        {/* DM を送る */}
+        <button
+          onClick={onDm}
+          style={{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"9px 12px", borderRadius:12, marginBottom:8, background:"rgba(17,138,178,0.10)", border:"1px solid rgba(17,138,178,0.22)", cursor:"pointer", WebkitTapHighlightColor:"transparent", boxSizing:"border-box" }}
+        >
+          <span style={{ fontSize:15 }}>✉️</span>
+          <span style={{ fontSize:13, fontWeight:600, color:"#118AB2" }}>DMを送る</span>
+        </button>
+
+        {/* プロフィールを見る */}
+        <button
+          onClick={onProfile}
+          style={{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"9px 12px", borderRadius:12, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.10)", cursor:"pointer", WebkitTapHighlightColor:"transparent", boxSizing:"border-box" }}
+        >
+          <span style={{ fontSize:15 }}>👤</span>
+          <span style={{ fontSize:13, fontWeight:600, color:"rgba(255,255,255,0.80)" }}>プロフィールを見る</span>
+        </button>
+      </div>
+    </>
+  );
+}
+
+// ── DMシート ───────────────────────────────────────────────────────────
+
+function DMSheet({ state, message, onMessageChange, onSend, onClose }: {
+  state:           DMSheetState;
+  message:         string;
+  onMessageChange: (v: string) => void;
+  onSend:          () => void;
+  onClose:         () => void;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [closing, setClosing] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => textareaRef.current?.focus(), 80);
+    return () => clearTimeout(t);
+  }, []);
+
+  function triggerClose() {
+    setClosing(true);
+    setTimeout(onClose, 200);
+  }
+
+  return (
+    <>
+      {/* 背景オーバーレイ */}
+      <div
+        style={{ position:"fixed", inset:0, zIndex:45, background:"rgba(0,0,0,0.50)" }}
+        onClick={triggerClose}
+      />
+      {/* シート本体 */}
+      <div
+        style={{
+          position:       "fixed",
+          bottom:         0,
+          left:           "50%",
+          transform:      "translateX(-50%)",
+          width:          375,
+          zIndex:         46,
+          background:     "#0d0d1a",
+          borderTop:      "0.5px solid rgba(201,168,76,0.30)",
+          borderRadius:   "24px 24px 0 0",
+          padding:        "0 0 env(safe-area-inset-bottom, 0)",
+          boxShadow:      "0 -8px 40px rgba(0,0,0,0.70)",
+          animation:      closing ? "dmSlideOut 0.20s ease-in forwards" : "dmSlideUp 0.30s cubic-bezier(0.32,0.72,0,1) forwards",
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* ハンドル */}
+        <div style={{ display:"flex", justifyContent:"center", paddingTop:10 }}>
+          <div style={{ width:36, height:4, borderRadius:2, background:"rgba(255,255,255,0.18)" }} />
+        </div>
+
+        {/* ヘッダー */}
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 16px 8px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <span style={{ fontSize:20 }}>{state.userIcon}</span>
+            <span style={{ fontSize:13, color:"rgba(255,255,255,0.60)" }}>
+              <span style={{ color:"#C9A84C", fontWeight:700 }}>@{state.userName}</span>
+              {" さんにDM"}
+            </span>
+          </div>
+          <button
+            onClick={triggerClose}
+            style={{
+              width:28, height:28, borderRadius:"50%", border:"none",
+              background:"rgba(255,255,255,0.08)", color:"rgba(255,255,255,0.55)",
+              fontSize:14, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
+              WebkitTapHighlightColor:"transparent",
+            }}
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* テキストエリア */}
+        <div style={{ padding:"0 16px 12px" }}>
+          <textarea
+            ref={textareaRef}
+            value={message}
+            onChange={e => onMessageChange(e.target.value)}
+            placeholder="メッセージを入力..."
+            rows={4}
+            style={{
+              width:              "100%",
+              background:         "rgba(255,255,255,0.06)",
+              border:             "0.5px solid rgba(255,255,255,0.12)",
+              borderRadius:       14,
+              padding:            "12px 14px",
+              fontSize:           14,
+              color:              "#fff",
+              resize:             "none",
+              outline:            "none",
+              fontFamily:         "inherit",
+              lineHeight:         1.55,
+              boxSizing:          "border-box",
+            }}
+          />
+        </div>
+
+        {/* 送信ボタン */}
+        <div style={{ padding:"0 16px 24px", display:"flex", justifyContent:"flex-end" }}>
+          <button
+            onClick={onSend}
+            disabled={!message.trim()}
+            style={{
+              height:       40,
+              padding:      "0 24px",
+              borderRadius: 20,
+              border:       "none",
+              cursor:       message.trim() ? "pointer" : "default",
+              background:   message.trim() ? "linear-gradient(135deg,#C9A84C,#a8862e)" : "rgba(201,168,76,0.18)",
+              color:        message.trim() ? "#0d0d1a" : "rgba(201,168,76,0.38)",
+              fontSize:     14,
+              fontWeight:   700,
+              letterSpacing:"0.04em",
+              transition:   "all 0.18s",
+              boxShadow:    message.trim() ? "0 0 12px rgba(201,168,76,0.35)" : "none",
+              WebkitTapHighlightColor:"transparent",
+            }}
+          >
+            送信
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── メインコンポーネント ────────────────────────────────────────────────
+
+export default function BubblePage() {
+  const router = useRouter();
+  const [tod,           setTod]          = useState<ToD>(() => getToD(new Date().getHours()));
+  const [bubbles,       setBubbles]      = useState<Bubble[]>([]);
+  const [popBursts,     setPopBursts]    = useState<PopBurst[]>([]);
+  const [burstMessages, setBurstMessages]= useState<BurstMessage[]>([]);
+  const [floatingEmojis,setFloatingEmojis]=useState<FloatingEmoji[]>([]);
+  const [actionMenu,      setActionMenu]     = useState<ActionMenuState | null>(null);
+  const [likedBubbleIds,  setLikedBubbleIds] = useState<Set<string>>(new Set());
+  const [focusedBubbleId, setFocusedBubbleId]= useState<string | null>(null);
+  const [input,           setInput]          = useState("");
+  const [dmSheet,         setDmSheet]        = useState<DMSheetState | null>(null);
+  const [dmMessage,       setDmMessage]      = useState("");
+  const [toastMsg,        setToastMsg]       = useState<string | null>(null);
+
+  const laneLastUsedRef  = useRef<number[]>(new Array(LANE_COUNT).fill(0));
+  const bubblesRef       = useRef<Bubble[]>([]);
+  const emojiIdRef       = useRef(0);
+  const msgIdRef         = useRef(0);
+  const lastReactionMsgIdx = useRef(-1);
+  const fieldRef         = useRef<HTMLDivElement>(null);
+  const physicsRef       = useRef<Map<string, {
+    x: number; y: number; vx: number; vy: number;
+    timeLeft: number; width: number; isOwn: boolean; lane: number; paused: boolean;
+    startTime: number; pausedElapsed: number; pausedAt: number | null;
+  }>>(new Map());
+  const bubbleDivRefs    = useRef<Map<string, HTMLDivElement>>(new Map());
+  const bubbleTimesRef   = useRef<Map<string, number>>(new Map());
+  const [bubbleTimes,   setBubbleTimes]  = useState<Map<string, number>>(new Map());
+  const [fading,        setFading]       = useState<{ gradient: string; opaque: boolean } | null>(null);
+  const todPrevRef       = useRef<ToD>(getToD(new Date().getHours()));
+  const triggerPopBurstRef   = useRef<(x: number, y: number) => void>(() => {});
+  const focusedBubbleIdRef   = useRef<string | null>(null);
+  const audioCtxRef          = useRef<AudioContext | null>(null);
+  const playSoundRef     = useRef({ spawn: () => {}, burst: () => {} });
+
+  // 星・大気（クライアントサイドのみ生成）
+  const MICRO  = useMemo(() => Array.from({ length: 90 }, (_, i) => ({ id:i,   left:(Math.sin(i*7.391)*0.5+0.5)*100, top:(Math.sin(i*3.714+1.2)*0.5+0.5)*90, size:0.5+(i%3)*0.18, op:0.10+(i%8)*0.05,  dur:4+(i%7)*0.7,  delay:(i%17)*0.31 })), []);
+  const NORMAL = useMemo(() => Array.from({ length: 50 }, (_, i) => ({ id:100+i, left:(Math.sin(i*5.123+0.5)*0.5+0.5)*100, top:(Math.sin(i*2.841+2.8)*0.5+0.5)*88, size:1+(i%4)*0.32, op:0.32+(i%6)*0.09, dur:2.8+(i%9)*0.42, delay:(i%11)*0.42 })), []);
+  const BRIGHT = useMemo(() => Array.from({ length: 18 }, (_, i) => ({ id:155+i, left:(Math.sin(i*9.432+1.8)*0.5+0.5)*100, top:(Math.sin(i*4.567+0.3)*0.5+0.5)*80, size:1.9+(i%4)*0.38, op:0.6+(i%4)*0.08,  dur:2.2+(i%8)*0.35, delay:(i%13)*0.52 })), []);
+  const NEBULA = useMemo(() => Array.from({ length: 6  }, (_, i) => ({ id:i, left:(Math.sin(i*4.123+0.7)*0.5+0.5)*100, top:(Math.sin(i*2.987+1.4)*0.5+0.5)*85, size:90+(i%4)*62, color:["rgba(70,30,160,0.055)","rgba(30,18,110,0.045)","rgba(90,50,190,0.06)","rgba(18,25,100,0.05)","rgba(50,18,130,0.045)","rgba(70,50,190,0.065)"][i] })), []);
+  const CLOUDS = useMemo(() => Array.from({ length: 7  }, (_, i) => ({ id:i, left:(Math.sin(i*6.28+0.4)*0.5+0.5)*100, top:20+(Math.sin(i*3.14+1.1)*0.5+0.5)*55, w:100+(i%4)*55, h:26+(i%3)*12 })), []);
+
+  // bubblesRef 同期
+  useEffect(() => { bubblesRef.current = bubbles; }, [bubbles]);
+
+  // focusedBubbleIdRef 同期（RAF ループから参照するため）
+  useEffect(() => { focusedBubbleIdRef.current = focusedBubbleId; }, [focusedBubbleId]);
+
+  // フォーカス演出：DOM を直接操作（Reactの再レンダーを避けるため）
+  useEffect(() => {
+    bubbleDivRefs.current.forEach((el, id) => {
+      el.style.transition = "filter 0.3s ease, opacity 0.3s ease";
+      if (focusedBubbleId === null) {
+        el.style.filter  = "";
+        el.style.opacity = "";
+        el.style.zIndex  = "";
+      } else if (id === focusedBubbleId) {
+        el.style.filter  = "drop-shadow(0 0 12px rgba(201,168,76,0.8))";
+        el.style.opacity = "1";
+        el.style.zIndex  = "35";
+      } else {
+        el.style.filter  = "blur(2px)";
+        el.style.opacity = "0.4";
+        el.style.zIndex  = "";
+      }
+    });
+  }, [focusedBubbleId]);
+
+  // bubbleTimes を 1秒ごとにスナップショット（BubbleItem の isDanger 更新用）
+  useEffect(() => {
+    const id = setInterval(() => {
+      setBubbleTimes(new Map(bubbleTimesRef.current));
+      // [DEBUG] bubble.y vs BURST_LINE_Y の確認（後で削除してOK）
+      physicsRef.current.forEach((state, bid) => {
+        console.log(`[bubble ${bid.slice(0,5)}] y=${state.y.toFixed(1)} BURST_LINE_Y=${BURST_LINE_Y} diff=${(state.y - BURST_LINE_Y).toFixed(1)}px timeLeft=${state.timeLeft.toFixed(1)}s`);
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // 時間帯遷移（1分ごと）
+  useEffect(() => {
+    const check = () => {
+      const newTod = getToD(new Date().getHours());
+      if (newTod === todPrevRef.current) return;
+      const oldGrad = TIME_BG[todPrevRef.current];
+      todPrevRef.current = newTod;
+      setFading({ gradient: oldGrad, opaque: true });
+      setTod(newTod);
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() =>
+          setFading(f => f ? { ...f, opaque: false } : null)
+        )
+      );
+      setTimeout(() => setFading(null), 122_000);
+    };
+    const id = setInterval(check, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // ── Web Audio ─────────────────────────────────────────────────────────
+
+  const ensureAudio = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (!audioCtxRef.current) {
+      try { audioCtxRef.current = new AudioContext(); } catch { return; }
+    }
+    if (audioCtxRef.current.state === "suspended") {
+      audioCtxRef.current.resume().catch(() => {});
+    }
+  }, []);
+
+  const getRunningCtx = useCallback((): AudioContext | null => {
+    const ctx = audioCtxRef.current;
+    if (!ctx || ctx.state !== "running") return null;
+    return ctx;
+  }, []);
+
+  const playSpawnSound = useCallback(() => {
+    const ctx = getRunningCtx();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const g   = ctx.createGain();
+    osc.connect(g); g.connect(ctx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(440, t);
+    osc.frequency.linearRampToValueAtTime(880, t + 0.1);
+    g.gain.setValueAtTime(0.15, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    osc.start(t); osc.stop(t + 0.12);
+  }, [getRunningCtx]);
+
+  const playBurstSound = useCallback(() => {
+    const ctx = getRunningCtx();
+    if (!ctx) return;
+    const t   = ctx.currentTime;
+    const sz  = Math.floor(ctx.sampleRate * 0.05);
+    const buf = ctx.createBuffer(1, sz, ctx.sampleRate);
+    const dat = buf.getChannelData(0);
+    for (let i = 0; i < sz; i++) dat[i] = (Math.random() * 2 - 1) * (1 - i / sz);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const ng = ctx.createGain();
+    src.connect(ng); ng.connect(ctx.destination);
+    ng.gain.setValueAtTime(0.3, t);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    src.start(t);
+    const osc = ctx.createOscillator();
+    const og  = ctx.createGain();
+    osc.connect(og); og.connect(ctx.destination);
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(880, t);
+    osc.frequency.exponentialRampToValueAtTime(110, t + 0.1);
+    og.gain.setValueAtTime(0.3, t);
+    og.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    osc.start(t); osc.stop(t + 0.12);
+  }, [getRunningCtx]);
+
+  useEffect(() => {
+    playSoundRef.current = { spawn: playSpawnSound, burst: playBurstSound };
+  }, [playSpawnSound, playBurstSound]);
+
+  useEffect(() => {
+    const activate = () => {
+      ensureAudio();
+      window.removeEventListener("pointerdown", activate, true);
+      window.removeEventListener("touchstart",  activate, true);
+      window.removeEventListener("keydown",     activate, true);
+    };
+    window.addEventListener("pointerdown", activate, true);
+    window.addEventListener("touchstart",  activate, true);
+    window.addEventListener("keydown",     activate, true);
+    return () => {
+      window.removeEventListener("pointerdown", activate, true);
+      window.removeEventListener("touchstart",  activate, true);
+      window.removeEventListener("keydown",     activate, true);
+    };
+  }, [ensureAudio]);
+
+  // ── 破裂エフェクト ───────────────────────────────────────────────────
+
+  const triggerPopBurst = useCallback((x: number, y: number) => {
+    playSoundRef.current.burst();
+
+    // 12個ゴールドパーティクル、360度放射、600ms（テキストなし）
+    const particles = Array.from({ length: 12 }, (_, i) => {
+      const angle = (i / 12) * Math.PI * 2 + Math.random() * 0.3;
+      const dist  = 20 + Math.random() * 30;
+      return {
+        id:   i,
+        dx:   (Math.cos(angle) * dist).toFixed(1) + "px",
+        dy:   (Math.sin(angle) * dist).toFixed(1) + "px",
+        size: 3 + Math.random() * 3,
+      };
+    });
+    const burst: PopBurst = { id: makeId(), x, y, particles };
+    setPopBursts(prev => [...prev, burst]);
+    setTimeout(() => setPopBursts(prev => prev.filter(b => b.id !== burst.id)), 700);
+  }, []);
+
+  useEffect(() => { triggerPopBurstRef.current = triggerPopBurst; }, [triggerPopBurst]);
+
+  // ── 物理演算ループ ───────────────────────────────────────────────────
+
+  useEffect(() => {
+    let rafId: number;
+    let last = performance.now();
+
+    const tick = (now: number) => {
+      const dt = Math.min((now - last) / 1000, 0.05);
+      last = now;
+
+      const fw = fieldRef.current?.offsetWidth ?? 375;
+      const toFade: string[] = [];
+
+      physicsRef.current.forEach((state, id) => {
+        // Date.now()ベースでtimeLeftを計算（pause中の経過時間は除外）
+        const pausedTotal = state.paused && state.pausedAt != null
+          ? state.pausedElapsed + (now - state.pausedAt) / 1000
+          : state.pausedElapsed;
+        state.timeLeft = BUBBLE_LIFETIME - (now - state.startTime) / 1000 + pausedTotal;
+        bubbleTimesRef.current.set(id, state.timeLeft);
+
+        // 座標ベース破裂判定: state.y はコンテナ座標 → BURST_LINE_Y と直接比較
+        // timeLeft <= 0 は安全網（通常は座標判定が先に発火）
+        if (state.y <= BURST_LINE_Y || state.timeLeft <= 0) {
+          toFade.push(id);
+          return;
+        }
+
+        // paused中は位置・速度を一切更新しない
+        if (state.paused) return;
+
+        // 上昇（vy は生成時に固定、変化しない）
+        state.y += state.vy * dt;
+
+        // 水平ゆらぎ（vxの自然減衰）
+        state.vx *= Math.pow(0.98, dt * 60);
+        state.x  += state.vx * dt;
+
+        // 左右壁バウンド（restitution = 0.4、上下バウンドなし）
+        if (state.x < 0) {
+          state.x  = 0;
+          state.vx = Math.abs(state.vx) * RESTITUTION;
+        }
+        if (state.x + state.width > fw) {
+          state.x  = fw - state.width;
+          state.vx = -Math.abs(state.vx) * RESTITUTION;
+        }
+      });
+
+      // DOM反映（focusedバブルには scale(1.05) を付与）
+      physicsRef.current.forEach((state, id) => {
+        if (toFade.includes(id)) return;
+        if (state.paused) return; // paused中はtransformを触らない
+        const el = bubbleDivRefs.current.get(id);
+        if (!el) return;
+        const scale = id === focusedBubbleIdRef.current ? " scale(1.05)" : "";
+        // state.y はコンテナ座標 → フィールド div 内 translate に変換（HEADER_H を引く）
+        el.style.transform = `translate(${state.x}px, ${state.y - HEADER_H}px)${scale}`;
+      });
+
+      // 破裂処理（即時パチン！）
+      if (toFade.length > 0) {
+        toFade.forEach(id => {
+          if (!physicsRef.current.has(id)) return;
+          const state = physicsRef.current.get(id)!;
+          // 破裂エフェクト座標はゴールドラインに固定（コンテナ座標）
+          triggerPopBurstRef.current(
+            state.x + state.width / 2,
+            BURST_LINE_Y,
+          );
+          physicsRef.current.delete(id);
+          bubbleTimesRef.current.delete(id);
+          // パチン！アニメーション（scale 1.3 → 0 の 0.3s pop）
+          const el = bubbleDivRefs.current.get(id);
+          if (el) {
+            el.style.animation    = "bubblePop 0.3s ease-out forwards";
+            el.style.pointerEvents = "none";
+          }
+        });
+        // アニメーション完了後にDOMから削除（0.35s）
+        const fadeCopy = [...toFade];
+        setTimeout(() => {
+          fadeCopy.forEach(id => bubbleDivRefs.current.delete(id));
+          setBubbles(prev => prev.filter(b => !fadeCopy.includes(b.id)));
+        }, 350);
+      }
+
+      rafId = requestAnimationFrame(tick);
+    };
+
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
+  // ── レーン割り当て ────────────────────────────────────────────────────
+
+  const assignLane = useCallback((W: number, spawnY: number, bubbleW: number = 160): { laneIdx: number; x: number } => {
+    const now     = Date.now();
+    const safeSec = LANE_SAFE_SEC * 1000;
+
+    const laneBottomY = new Array(LANE_COUNT).fill(Infinity);
+    physicsRef.current.forEach(state => {
+      const lane = state.lane;
+      if (state.y > (laneBottomY[lane] === Infinity ? -Infinity : laneBottomY[lane])) {
+        laneBottomY[lane] = state.y;
+      }
+    });
+
+    const waits = laneLastUsedRef.current.map((t, i) => ({ i, wait: now - t }));
+    const safe  = waits.filter(l =>
+      l.wait >= safeSec &&
+      (laneBottomY[l.i] === Infinity || laneBottomY[l.i] < spawnY - (BUBBLE_H + SAFE_MARGIN))
+    );
+    const best = (safe.length > 0 ? safe : waits)
+      .reduce((a, b) => a.wait > b.wait ? a : b);
+
+    laneLastUsedRef.current[best.i] = now;
+
+    const baseX  = LANES[best.i] * W;
+    const jitter = (Math.random() - 0.5) * 20;
+    const x      = Math.max(10, Math.min(W - bubbleW - 10, baseX + jitter));
+
+    return { laneIdx: best.i, x };
+  }, []);
+
+  // ── Bubble追加 ────────────────────────────────────────────────────────
+
+  const addBubble = useCallback((text: string, isOwn: boolean, avatar?: string) => {
+    if (!text.trim()) return;
+
+    const fw    = fieldRef.current?.offsetWidth  ?? 375;
+    const fh    = fieldRef.current?.offsetHeight ?? 600;
+    const width = 154 + Math.floor(Math.random() * 25); // 154〜178px
+
+    // initY をコンテナ座標（outer div 上端からの距離）で管理する
+    const initY = HEADER_H + fh - INPUT_H - BUBBLE_H;
+    const { laneIdx, x: initX } = assignLane(fw, initY, width);
+    const initVx = (Math.random() - 0.5) * 40;
+    // 20秒でちょうどBURST_LINE_Y（コンテナ座標）に到達する速度（px/s）
+    // speed = (startY - BURST_LINE_Y) / (20 * 60) [px/frame @60fps] と等価
+    const initVy = -((initY - BURST_LINE_Y) / BUBBLE_LIFETIME);
+    const id     = makeId();
+
+    const randomFriend = FRIENDS_MOCK[Math.floor(Math.random() * FRIENDS_MOCK.length)];
+    const b: Bubble = {
+      id,
+      text:      text.trim(),
+      avatar:    avatar ?? (isOwn ? "🌟" : randomFriend.avatar),
+      handle:    isOwn ? 'you' : randomFriend.handle,
+      isOwn,
+      lane:      laneIdx,
+      left:      fw > 0 ? (initX / fw) * 100 : 5,
+      width,
+      startTime: Date.now(),
+      vx:        initVx,
+      vy:        initVy,
+      timeLeft:  BUBBLE_LIFETIME,
+      x:         initX,
+      y:         initY,
+      textColor: "#FFFFFF",
+      paused:    false,
+    };
+
+    physicsRef.current.set(id, {
+      x: initX, y: initY, vx: initVx, vy: initVy,
+      timeLeft: BUBBLE_LIFETIME, width, isOwn, lane: laneIdx, paused: false,
+      startTime: performance.now(), pausedElapsed: 0, pausedAt: null,
+    });
+    playSoundRef.current.spawn();
+
+    // 自分の投稿時 autoReaction（ローカルシミュレーション）
+    if (isOwn) {
+      setTimeout(() => {
+        const emoji = REACT_EMOJIS[Math.floor(Math.random() * REACT_EMOJIS.length)];
+        const newEmojis: FloatingEmoji[] = Array.from({ length: 3 }, (_, i) => ({
+          id:    emojiIdRef.current++,
+          left:  (initX / fw) * 100 + (Math.random() - 0.5) * 10,
+          emoji,
+          size:  14 + Math.random() * 10,
+          delay: i * 100,
+        }));
+        setFloatingEmojis(prev => [...prev, ...newEmojis]);
+        const ids = new Set(newEmojis.map(fe => fe.id));
+        setTimeout(() => setFloatingEmojis(prev => prev.filter(fe => !ids.has(fe.id))), 2000);
+      }, 500);
+    }
+
+    // FIFO: MAX_BUBBLES超過時は最古を強制破裂してから削除
+    const currentBubbles = bubblesRef.current;
+    if (currentBubbles.length >= MAX_BUBBLES) {
+      const oldest  = currentBubbles[0];
+      const oldState = physicsRef.current.get(oldest.id);
+      if (oldState) {
+        triggerPopBurstRef.current(
+          oldState.x + oldState.width / 2,
+          oldState.y + BUBBLE_H / 2,
+        );
+      }
+      const oldEl = bubbleDivRefs.current.get(oldest.id);
+      if (oldEl) {
+        oldEl.style.transition = "none";
+        oldEl.style.opacity    = "0";
+        oldEl.style.transform  = (oldEl.style.transform ?? "") + " scale(0)";
+      }
+      physicsRef.current.delete(oldest.id);
+      bubbleTimesRef.current.delete(oldest.id);
+      requestAnimationFrame(() => bubbleDivRefs.current.delete(oldest.id));
+      setBubbles(prev => [...prev.filter(p => p.id !== oldest.id), b]);
+    } else {
+      setBubbles(prev => [...prev, b]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignLane]);
+
+  const addBubbleRef = useRef(addBubble);
+  useEffect(() => { addBubbleRef.current = addBubble; }, [addBubble]);
+
+  // 自動生成
+  useEffect(() => {
+    let tid: ReturnType<typeof setTimeout> | null = null;
+    const scheduleNext = () => {
+      const delay = 400 + Math.random() * 1200;
+      tid = setTimeout(() => {
+        // フォーカス中は新規Bubble生成を停止
+        if (!focusedBubbleIdRef.current) {
+          addBubbleRef.current(
+            MSGS[Math.floor(Math.random() * MSGS.length)],
+            false,
+            AVATARS[Math.floor(Math.random() * AVATARS.length)],
+          );
+        }
+        scheduleNext();
+      }, delay);
+    };
+    scheduleNext();
+    return () => { if (tid !== null) clearTimeout(tid); };
+  }, []);
+
+  function handleSend() {
+    if (!input.trim()) return;
+    addBubble(input, true);
+    setInput("");
+  }
+
+  // 共通：Bubbleを一時停止（フォーカス演出も同時起動）
+  function pauseBubble(id: string) {
+    const state = physicsRef.current.get(id);
+    if (state && !state.paused) {
+      state.paused   = true;
+      state.pausedAt = performance.now();
+    }
+    setFocusedBubbleId(id);
+  }
+
+  // 共通：Bubbleを再開（フォーカス演出も同時解除）
+  function resumeBubble(id: string) {
+    const state = physicsRef.current.get(id);
+    if (state && state.paused) {
+      if (state.pausedAt != null) {
+        state.pausedElapsed += (performance.now() - state.pausedAt) / 1000;
+        state.pausedAt = null;
+      }
+      state.paused = false;
+    }
+    setFocusedBubbleId(null);
+  }
+
+  // タップ → アクションメニュー表示
+  function handleTap(clientX: number, clientY: number, b: Bubble) {
+    if (b.isOwn) return;
+    pauseBubble(b.id);
+    setActionMenu({ bubbleId: b.id, bubble: b, clientX, clientY });
+  }
+
+  // メニュー外タップ → キャンセル
+  function handleMenuClose() {
+    if (actionMenu) resumeBubble(actionMenu.bubbleId);
+    setActionMenu(null);
+  }
+
+  // リアクション選択（アクションメニューから）
+  function handleReact(emoji: string) {
+    if (!actionMenu) return;
+    const { bubbleId, clientX, clientY } = actionMenu;
+
+    const fieldRect = fieldRef.current?.getBoundingClientRect();
+    const fieldTop  = fieldRect?.top  ?? 48;
+    const fieldLeft = fieldRect?.left ?? 0;
+    const fx = clientX - fieldLeft;
+    const fy = clientY - fieldTop;
+
+    // 絵文字がBubbleから飛び出すアニメーション
+    const newEmojis: FloatingEmoji[] = Array.from({ length: 4 }, (_, i) => ({
+      id:     emojiIdRef.current++,
+      left:   0,
+      emoji,
+      size:   18 + Math.random() * 10,
+      delay:  i * 60,
+      fieldX: fx + (Math.random() - 0.5) * 20,
+      fieldY: fy - HEADER_H - 10,  // fy はコンテナ座標 → フィールド座標に変換
+    }));
+    setFloatingEmojis(prev => [...prev, ...newEmojis]);
+    const ids = new Set(newEmojis.map(fe => fe.id));
+    setTimeout(() => setFloatingEmojis(prev => prev.filter(fe => !ids.has(fe.id))), 2000);
+
+    // リアクションメッセージ表示
+    let idx = Math.floor(Math.random() * REACTION_MESSAGES.length);
+    if (idx === lastReactionMsgIdx.current && REACTION_MESSAGES.length > 1) {
+      idx = (idx + 1) % REACTION_MESSAGES.length;
+    }
+    lastReactionMsgIdx.current = idx;
+    const msg: BurstMessage = {
+      id:   msgIdRef.current++,
+      x:    fx,
+      y:    fy - BUBBLE_H - 8,
+      text: REACTION_MESSAGES[idx],
+    };
+    setBurstMessages(prev => [...prev, msg]);
+    setTimeout(() => setBurstMessages(prev => prev.filter(m => m.id !== msg.id)), 900);
+
+    resumeBubble(bubbleId);
+    setActionMenu(null);
+  }
+
+  // 👍 ワンタップリアクション（メニューなし）
+  function handleQuickLike(b: Bubble) {
+    if (b.isOwn) return;
+    const fieldRect = fieldRef.current?.getBoundingClientRect();
+    const fieldLeft = fieldRect?.left ?? 0;
+    const fieldTop  = fieldRect?.top  ?? 48;
+    const state     = physicsRef.current.get(b.id);
+    const fx = state ? state.x + state.width / 2 : 0;
+    const fy = state ? state.y : 0;
+
+    const newEmojis: FloatingEmoji[] = Array.from({ length: 3 }, (_, i) => ({
+      id:     emojiIdRef.current++,
+      left:   0,
+      emoji:  "👍",
+      size:   16 + Math.random() * 8,
+      delay:  i * 60,
+      fieldX: fx + (Math.random() - 0.5) * 24,
+      fieldY: fy - HEADER_H - 10,  // fy はコンテナ座標 → フィールド座標に変換
+    }));
+    setFloatingEmojis(prev => [...prev, ...newEmojis]);
+    const ids = new Set(newEmojis.map(fe => fe.id));
+    setTimeout(() => setFloatingEmojis(prev => prev.filter(fe => !ids.has(fe.id))), 2000);
+
+    // 0.5秒ゴールドグロー
+    setLikedBubbleIds(prev => new Set([...prev, b.id]));
+    setTimeout(() => setLikedBubbleIds(prev => { const n = new Set(prev); n.delete(b.id); return n; }), 500);
+  }
+
+  // DM ボタン → シートを開く（Bubble は paused のまま維持）
+  function handleDMOpen() {
+    if (!actionMenu) return;
+    const { bubble } = actionMenu;
+    setActionMenu(null); // メニューを閉じる（resumeBubble は呼ばない）
+    setDmMessage("");
+    setDmSheet({ bubbleId: bubble.id, userName: bubble.text.slice(0, 8), userIcon: bubble.avatar });
+  }
+
+  // DM シートを閉じる → Bubble 再開
+  function handleDMClose() {
+    if (dmSheet) resumeBubble(dmSheet.bubbleId);
+    setDmSheet(null);
+    setDmMessage("");
+  }
+
+  // DM 送信
+  function handleDMSend() {
+    if (!dmSheet || !dmMessage.trim()) return;
+    console.log("[DM送信]", dmSheet.userName, ":", dmMessage.trim());
+    if (dmSheet) resumeBubble(dmSheet.bubbleId);
+    setDmSheet(null);
+    setDmMessage("");
+    setToastMsg("DMを送りました 💬");
+    setTimeout(() => setToastMsg(null), 1500);
+  }
+
+  // ── レンダリング ──────────────────────────────────────────────────────
+
+  return (
+    <div style={{ position:"relative", flex:1, minHeight:0, overflow:"hidden", background:"#0d0d1a" }}>
+
+      {/* ヘッダー */}
+      <header style={{
+        position:"fixed", top:0, left:"50%", transform:"translateX(-50%)",
+        width:"375px", height:"48px",
+        display:"flex", justifyContent:"space-between", alignItems:"center",
+        padding:"0 16px", zIndex:100,
+        background:"transparent", pointerEvents:"none",
+      }}>
+        <span style={{ color:"#C9A84C", fontSize:20, fontWeight:"bold", letterSpacing:"0.04em" }}>
+          SYNC.
+        </span>
+        <span style={{ display:"flex", alignItems:"center", gap:6 }}>
+          <span style={{ color:"rgba(255,255,255,0.5)", fontSize:12 }}>{bubbles.length}/{MAX_BUBBLES}</span>
+          <span style={{ color:"white", fontSize:14 }}>Bubble 🔴</span>
+        </span>
+      </header>
+
+      {/* 大気背景 z-index:0 */}
+      <div style={{ position:"absolute", inset:0, zIndex:0, overflow:"hidden", pointerEvents:"none" }}>
+        <div style={{ position:"absolute", inset:0, background:TIME_BG[tod] }} />
+        {fading && (
+          <div style={{
+            position:"absolute", inset:0,
+            background: fading.gradient,
+            opacity:    fading.opaque ? 1 : 0,
+            transition: fading.opaque ? "none" : "opacity 120s ease",
+            pointerEvents:"none",
+          }} />
+        )}
+        {tod==="morning" && <>
+          <div style={{ position:"absolute", inset:0, background:"radial-gradient(ellipse 80% 55% at 50% 90%,rgba(255,200,100,0.30) 0%,transparent 70%)" }} />
+          {CLOUDS.map(c=><div key={c.id} style={{ position:"absolute", left:`${c.left}%`, top:`${c.top}%`, width:c.w, height:c.h, borderRadius:"50%", background:"rgba(255,250,240,0.26)", filter:"blur(18px)" }}/>)}
+        </>}
+        {tod==="day" && <>
+          <div style={{ position:"absolute", inset:"0 0 60% 0", background:"linear-gradient(180deg,rgba(20,80,160,0.32) 0%,transparent 100%)" }} />
+          {CLOUDS.map(c=><div key={c.id} style={{ position:"absolute", left:`${c.left}%`, top:`${c.top}%`, width:c.w, height:c.h, borderRadius:"50%", background:"rgba(255,255,255,0.20)", filter:"blur(22px)" }}/>)}
+        </>}
+        {tod==="evening" && <>
+          <div style={{ position:"absolute", inset:0, background:"radial-gradient(ellipse 90% 60% at 50% 85%,rgba(240,90,30,0.36) 0%,transparent 65%)" }} />
+          <div style={{ position:"absolute", inset:"0 0 75% 0", background:"linear-gradient(180deg,rgba(60,10,120,0.32) 0%,transparent 100%)" }} />
+        </>}
+        {tod==="night" && <>
+          {NEBULA.map(nb=><div key={nb.id} style={{ position:"absolute", left:`${nb.left}%`, top:`${nb.top}%`, width:nb.size, height:nb.size, borderRadius:"50%", background:nb.color, filter:"blur(38px)", transform:"translate(-50%,-50%)" }}/>)}
+          <div style={{ position:"absolute", inset:"60% 0 0 0", background:"linear-gradient(transparent,rgba(1,1,8,0.55))" }} />
+          {CLOUDS.map(c=><div key={c.id} style={{ position:"absolute", left:`${c.left}%`, top:`${c.top}%`, width:c.w, height:c.h, borderRadius:"50%", background:"rgba(20,10,60,0.18)", filter:"blur(28px)" }}/>)}
+          {MICRO.map(s=><div key={s.id} style={{ position:"absolute", left:`${s.left}%`, top:`${s.top}%`, width:s.size, height:s.size, borderRadius:"50%", background:"#fff", ["--star-op" as string]:s.op, animation:`starTwinkle ${s.dur}s ${s.delay}s ease-in-out infinite` }}/>)}
+          {NORMAL.map(s=><div key={s.id} style={{ position:"absolute", left:`${s.left}%`, top:`${s.top}%`, width:s.size, height:s.size, borderRadius:"50%", background:"#fff", boxShadow:`0 0 ${s.size*1.5}px rgba(255,255,255,${(s.op*0.6).toFixed(2)})`, ["--star-op" as string]:s.op, animation:`starTwinkle ${s.dur}s ${s.delay}s ease-in-out infinite` }}/>)}
+          {BRIGHT.map(s=><div key={s.id} style={{ position:"absolute", left:`${s.left}%`, top:`${s.top}%`, width:s.size, height:s.size, borderRadius:"50%", background:"#fff", boxShadow:`0 0 ${s.size*2.5}px rgba(255,255,255,${(s.op*0.8).toFixed(2)}),0 0 ${s.size*5}px rgba(200,220,255,${(s.op*0.3).toFixed(2)})`, ["--star-op" as string]:s.op, animation:`starTwinkle ${s.dur}s ${s.delay}s ease-in-out infinite` }}/>)}
+        </>}
+      </div>
+
+      {/* Bubbleフィールド z-index:10 */}
+      <div
+        ref={fieldRef}
+        style={{
+          position:  "relative",
+          width:     "100%",
+          height:    "calc(100dvh - 80px - 48px)",
+          marginTop: 48,
+          zIndex:    10,
+          overflow:  "hidden",
+        }}
+      >
+        {/* 破裂ライン境界線 */}
+        <div style={{
+          position:      "absolute",
+          top:           BURST_LINE_Y - HEADER_H,
+          left:          0,
+          right:         0,
+          height:        1,
+          background:    "rgba(201,168,76,0.4)",
+          pointerEvents: "none",
+          zIndex:        5,
+        }} />
+
+        {bubbles.map(b => (
+          <BubbleItem
+            key={b.id}
+            b={b}
+            timeLeft={bubbleTimes.get(b.id) ?? b.timeLeft}
+            isLiked={likedBubbleIds.has(b.id)}
+            onTap={(cx, cy) => handleTap(cx, cy, b)}
+            onQuickLike={() => handleQuickLike(b)}
+            setRef={el => {
+              if (el) {
+                bubbleDivRefs.current.set(b.id, el);
+                // マウント直後にフォーカス状態を即時反映
+                el.style.transition = "filter 0.3s ease, opacity 0.3s ease";
+                if (focusedBubbleId !== null && b.id !== focusedBubbleId) {
+                  el.style.filter  = "blur(2px)";
+                  el.style.opacity = "0.4";
+                }
+              } else {
+                bubbleDivRefs.current.delete(b.id);
+              }
+            }}
+          />
+        ))}
+
+
+        {/* 浮かぶリアクション絵文字 */}
+        {floatingEmojis.map(fe => (
+          <div
+            key={fe.id}
+            style={{
+              position:      "absolute",
+              ...(fe.fieldX !== undefined && fe.fieldY !== undefined
+                ? { left: fe.fieldX, top: fe.fieldY }
+                : { left: `${fe.left}%`, bottom: INPUT_H + 60 }),
+              fontSize:      fe.size,
+              lineHeight:    1,
+              pointerEvents: "none",
+              zIndex:        25,
+              animation:     `emojiFloat 1.2s ${fe.delay}ms ease-out forwards`,
+            }}
+          >
+            {fe.emoji}
+          </div>
+        ))}
+      </div>
+
+      {/* 破裂エフェクト — フィールド外に配置してoverflow:hiddenによるクリップを回避 z-index:110 */}
+      {popBursts.map(pb => (
+        <div key={pb.id} style={{ position:"absolute", left:pb.x, top:pb.y, pointerEvents:"none", zIndex:110 }}>
+          {pb.particles.map(p => (
+            <div
+              key={p.id}
+              style={{
+                position:     "absolute",
+                width:        p.size,
+                height:       p.size,
+                borderRadius: "50%",
+                background:   "#C9A84C",
+                boxShadow:    `0 0 ${p.size * 2}px #C9A84C`,
+                top:          -p.size / 2,
+                left:         -p.size / 2,
+                ["--pdx" as string]: p.dx,
+                ["--pdy" as string]: p.dy,
+                animation:    "popParticle 600ms ease-out forwards",
+              }}
+            />
+          ))}
+        </div>
+      ))}
+
+      {/* リアクションメッセージ — フィールド外に配置 z-index:110 */}
+      {burstMessages.map(m => (
+        <div
+          key={m.id}
+          style={{
+            position:      "absolute",
+            left:          m.x,
+            top:           m.y,
+            fontSize:      14,
+            fontWeight:    700,
+            color:         "#C9A84C",
+            textShadow:    "0 1px 6px rgba(0,0,0,0.8)",
+            whiteSpace:    "nowrap",
+            userSelect:    "none",
+            pointerEvents: "none",
+            zIndex:        110,
+            animation:     "burstMsgFade 0.8s ease-out forwards",
+            transform:     "translate(-50%, 0)",
+          }}
+        >
+          {m.text}
+        </div>
+      ))}
+
+      {/* 入力欄 z-index:40 */}
+      <div style={{
+        position:             "absolute",
+        bottom:               0,
+        left:                 0,
+        right:                0,
+        zIndex:               40,
+        height:               INPUT_H,
+        background:           "rgba(13,13,26,0.82)",
+        backdropFilter:       "blur(20px)",
+        WebkitBackdropFilter: "blur(20px)",
+        borderTop:            "0.5px solid rgba(201,168,76,0.22)",
+        padding:              "10px 14px",
+        display:              "flex",
+        alignItems:           "center",
+      }}>
+        <div style={{ display:"flex", alignItems:"center", gap:10, width:"100%" }}>
+          <div style={{ flex:1, display:"flex", alignItems:"center", gap:8, background:"rgba(255,255,255,0.07)", border:"0.5px solid rgba(255,255,255,0.12)", borderRadius:22, padding:"8px 12px 8px 14px" }}>
+            <span style={{ fontSize:15, lineHeight:1, flexShrink:0 }}>🌟</span>
+            <input
+              type="text"
+              value={input}
+              onChange={e => setInput(e.target.value.slice(0, MAX_CHARS))}
+              onKeyDown={e => e.key === "Enter" && handleSend()}
+              placeholder="今どうしてる？..."
+              style={{ flex:1, background:"transparent", border:"none", outline:"none", fontSize:14, color:"#fff" }}
+            />
+            <span style={{
+              fontSize:11, flexShrink:0, minWidth:20, textAlign:"right", fontVariantNumeric:"tabular-nums",
+              color: input.length>=MAX_CHARS ? "#E63946" : input.length>=12 ? "#F4A261" : "rgba(255,255,255,0.22)",
+            }}>
+              {MAX_CHARS - input.length}
+            </span>
+            {input && (
+              <button onClick={()=>setInput("")} style={{ background:"none", border:"none", cursor:"pointer", padding:0, flexShrink:0, lineHeight:0 }}>
+                <svg viewBox="0 0 16 16" fill="rgba(255,255,255,0.35)" width={11} height={11}>
+                  <path d="M8 6.586L2.707 1.293 1.293 2.707 6.586 8l-5.293 5.293 1.414 1.414L8 9.414l5.293 5.293 1.414-1.414L9.414 8l5.293-5.293-1.414-1.414z"/>
+                </svg>
+              </button>
+            )}
+          </div>
+          <button
+            onClick={handleSend}
+            disabled={!input.trim()}
+            style={{
+              width:40, height:40, borderRadius:"50%", border:"none",
+              cursor:     input.trim() ? "pointer" : "default",
+              background: input.trim() ? "linear-gradient(135deg,#C9A84C,#a8862e)" : "rgba(201,168,76,0.14)",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              transition:"all 0.2s", flexShrink:0,
+              boxShadow: input.trim() ? "0 0 12px rgba(201,168,76,0.40)" : "none",
+            }}
+          >
+            <svg viewBox="0 0 20 20" fill="none" width={14} height={14}>
+              <path d="M2.5 10l15-7.5L10 10m7.5-7.5L10 10v7.5l2.5-3.5" stroke={input.trim()?"#0d0d1a":"rgba(201,168,76,0.38)"} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {/* アクションメニュー z-index:29 */}
+      {actionMenu && (
+        <BubbleActionMenu
+          menu={actionMenu}
+          onReact={handleReact}
+          onDm={handleDMOpen}
+          onProfile={() => { const h = actionMenu.bubble.handle; handleMenuClose(); router.push(h === 'you' ? '/profile' : `/profile/${h}`); }}
+          onClose={handleMenuClose}
+        />
+      )}
+
+      {/* DM シート z-index:46 */}
+      {dmSheet && (
+        <DMSheet
+          state={dmSheet}
+          message={dmMessage}
+          onMessageChange={setDmMessage}
+          onSend={handleDMSend}
+          onClose={handleDMClose}
+        />
+      )}
+
+      {/* トースト */}
+      {toastMsg && (
+        <div style={{
+          position:     "fixed",
+          bottom:       96,
+          left:         "50%",
+          transform:    "translateX(-50%)",
+          zIndex:       60,
+          background:   "rgba(20,20,36,0.92)",
+          border:       "0.5px solid rgba(201,168,76,0.32)",
+          borderRadius: 24,
+          padding:      "10px 20px",
+          fontSize:     13,
+          fontWeight:   600,
+          color:        "#fff",
+          whiteSpace:   "nowrap",
+          boxShadow:    "0 4px 20px rgba(0,0,0,0.50)",
+          backdropFilter:       "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          animation:    "menuPopIn 0.18s cubic-bezier(0.34,1.56,0.64,1) forwards",
+        }}>
+          {toastMsg}
+        </div>
+      )}
+
+      {/* CSS */}
+      <style>{`
+        @keyframes bubblePop {
+          0%   { scale: 1;   opacity: 1;   }
+          35%  { scale: 1.3; opacity: 0.85; }
+          100% { scale: 0;   opacity: 0;   }
+        }
+
+        @keyframes bubbleSpawn {
+          0%   { transform: scale(0);   opacity: 0.6; }
+          70%  { transform: scale(1.2); opacity: 1;   }
+          100% { transform: scale(1.0); opacity: 1;   }
+        }
+
+        @keyframes pururu {
+          0%, 100% { transform: translate(0, 0) scale(1); }
+          25%      { transform: translate(-2px, 1px) scale(1.02); }
+          75%      { transform: translate(2px, -1px) scale(0.98); }
+        }
+
+        @keyframes popParticle {
+          0%   { opacity: 1;   transform: translate(0, 0) scale(1.2); }
+          60%  { opacity: 0.6; }
+          100% { opacity: 0;   transform: translate(var(--pdx), var(--pdy)) scale(0); }
+        }
+
+        @keyframes burstMsgFade {
+          0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+          20%  { opacity: 1; transform: translate(-50%, -60%) scale(1.05); }
+          70%  { opacity: 1; transform: translate(-50%, -70%) scale(1); }
+          100% { opacity: 0; transform: translate(-50%, -90%) scale(0.9); }
+        }
+
+        @keyframes emojiFloat {
+          0%   { transform: translateY(0)      scale(1);   opacity: 1; }
+          60%  { transform: translateY(-60px)  scale(1.2); opacity: 0.9; }
+          100% { transform: translateY(-120px) scale(0.8); opacity: 0; }
+        }
+
+        @keyframes menuPopIn {
+          from { opacity: 0; transform: scale(0.80) translateY(4px); }
+          to   { opacity: 1; transform: scale(1.00) translateY(0);   }
+        }
+
+        @keyframes reactionPopIn {
+          0%   { opacity: 0; transform: scale(0.6) translateY(8px); }
+          70%  { opacity: 1; transform: scale(1.06) translateY(-2px); }
+          100% { opacity: 1; transform: scale(1.0) translateY(0); }
+        }
+
+        @keyframes starTwinkle {
+          0%, 100% { opacity: var(--star-op, 0.8); transform: scale(1); }
+          40%      { opacity: 0.04; transform: scale(0.4); }
+          70%      { opacity: var(--star-op, 0.8); transform: scale(1.1); }
+        }
+
+        @keyframes dmSlideUp {
+          from { transform: translateX(-50%) translateY(100%); opacity: 0; }
+          to   { transform: translateX(-50%) translateY(0);    opacity: 1; }
+        }
+
+        @keyframes dmSlideOut {
+          from { transform: translateX(-50%) translateY(0);    opacity: 1; }
+          to   { transform: translateX(-50%) translateY(100%); opacity: 0; }
+        }
+
+        textarea::placeholder { color: rgba(255,255,255,0.28); }
+        input::placeholder { color: rgba(255,255,255,0.28); }
+        button:active { transform: scale(0.93); }
+      `}</style>
+    </div>
+  );
+}

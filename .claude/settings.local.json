@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(find /c/Users/81908/sync-app -name *profile* -type f)",
+      "Bash(find /c/Users/81908/sync-app/lib -name i18n*)",
+      "Bash(find /c/Users/81908/sync-app -name i18n* -not -path */node_modules/*)",
+      "Bash(find C:Users81908sync-appsrc -type f -name *search* -o -name *sagasu* -o -name *さがす*)",
+      "Bash(find /c/Users/81908/sync-app -type f \\\\\\(-iname *search* -o -iname *sagasu* -o -iname *さがす* \\\\\\))",
+      "Bash(find /c/Users/81908/sync-app -type f \\\\\\(-name *.ts -o -name *.tsx -o -name *.js -o -name *.jsx \\\\\\))",
+      "Bash(find /c/Users/81908/sync-app/app -type f \\\\\\(-iname *search* -o -iname *sagasu* -o -iname *さがす* \\\\\\))",
+      "Bash(find /c/Users/81908/sync-app/components -type f \\\\\\(-iname *search* -o -iname *sagasu* -o -iname *さがす* \\\\\\))",
+      "Bash(find /c/Users/81908/sync-app/lib -type f \\\\\\(-iname *search* -o -iname *sagasu* -o -iname *さがす* \\\\\\))",
+      "Bash(find /c/Users/81908/sync-app/app -type f -name *.ts* -o -name *.js*)",
+      "Bash(find /c/Users/81908/sync-app/components -type f -name *.ts* -o -name *.js*)",
+      "Bash(find /c/Users/81908/sync-app/lib -type f -name *.ts* -o -name *.js*)",
+      "Bash(find /c/Users/81908/sync-app -maxdepth 3 -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx -o -name *.js \\\\\\) ! -path */node_modules/* ! -path */.next/*)",
+      "Bash(npx next:*)",
+      "Bash(find /c/Users/81908/sync-app -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx -o -name *.js \\\\\\))",
+      "Bash(xargs grep:*)",
+      "Bash(find /c/Users/81908/sync-app/components -type f \\\\\\(-name *.tsx -o -name *.ts \\\\\\))",
+      "Bash(find C:Users81908sync-v5 -type f \\\\\\(-name *.tsx -o -name *.ts -o -name *.jsx -o -name *.js -o -name *.css -o -name *.scss \\\\\\))",
+      "Bash(find C:Users81908sync-app -type f -name *bubble* -o -name *Bubble*)",
+      "Bash(npm install:*)",
+      "Bash(find /c/Users/81908/sync-v5 -type f -name *bubble* -o -type d -name *bubble*)",
+      "Bash(find /c/Users/81908/sync-v5/src -type f -name *.ts -o -name *.tsx -o -name *.js -o -name *.json)",
+      "Read(//c/Users/81908/sync-app/src/**)",
+      "Read(//c/Users/81908/sync-app/src/app/**)",
+      "Bash(ls C:/Users/81908/sync-v5/.env*)",
+      "Bash(find C:/Users/81908/sync-app/src -name *.tsx)",
+      "Bash(cmd /c \"cd C:\\\\Users\\\\81908\\\\sync-app && npx tsc --noEmit 2>&1\")",
+      "Bash(cmd /c \"cd /d C:\\\\Users\\\\81908\\\\sync-app && npx tsc --noEmit\" 2>&1)",
+      "Bash(powershell -Command \"Set-Location 'C:\\\\Users\\\\81908\\\\sync-app'; npx tsc --noEmit 2>&1 | Select-Object -First 50\")",
+      "Bash(powershell -Command \"Set-Location 'C:\\\\Users\\\\81908\\\\sync-v5'; npx tsc --noEmit 2>&1\")",
+      "Bash(powershell -Command \"Set-Location 'C:\\\\Users\\\\81908\\\\sync-v5'; npm run dev 2>&1 | Select-Object -First 15\")",
+      "Bash(powershell -Command \"New-Item -ItemType Directory -Path 'C:\\\\Users\\\\81908\\\\sync-v5\\\\src\\\\app\\\\profile\\\\[userId]' -Force | Out-Null; Write-Output 'done'\")",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
