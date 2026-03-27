@@ -116,6 +116,17 @@ body {
   to   { transform: translateY(0);     opacity: 1; }
 }
 
+/* ── スプラッシュ画面 ── */
+@keyframes splashSlideIn {
+  from { clip-path: inset(0 100% 0 0); }
+  to   { clip-path: inset(0 0% 0 0); }
+}
+
+@keyframes splashShimmer {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(220%); }
+}
+
 /* Bottom sheet slide-up animation */
 @keyframes slideUp {
   from { transform: translateY(100%); opacity: 0; }

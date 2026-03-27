@@ -35,7 +35,12 @@
       "Bash(powershell -Command \"Set-Location 'C:\\\\Users\\\\81908\\\\sync-v5'; npm run dev 2>&1 | Select-Object -First 15\")",
       "Bash(powershell -Command \"New-Item -ItemType Directory -Path 'C:\\\\Users\\\\81908\\\\sync-v5\\\\src\\\\app\\\\profile\\\\[userId]' -Force | Out-Null; Write-Output 'done'\")",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git config:*)",
+      "Bash(git branch:*)",
+      "Bash(git remote:*)",
+      "Bash(git push:*)"
     ]
   }
 }
