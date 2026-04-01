@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import SyncLogo from "@/components/SyncLogo";
 
 export default function SplashPage() {
   const router = useRouter();
@@ -37,23 +38,8 @@ export default function SplashPage() {
           animation: "splashSlideIn 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards",
         }}
       >
-        {/* グラデーションテキスト */}
-        <span
-          style={{
-            fontFamily: "'Impact', 'Arial Narrow', sans-serif",
-            fontWeight: 800,
-            fontSize: 80,
-            letterSpacing: 10,
-            background: "linear-gradient(180deg, #FF1A1A 0%, #E8102A 40%, #C0000F 70%, #8B0000 100%)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            backgroundClip: "text",
-            display: "block",
-            lineHeight: 1,
-          }}
-        >
-          SYNC.
-        </span>
+        {/* グラデーションロゴ */}
+        <SyncLogo width={200} />
 
         {/* 光沢シマー */}
         <div

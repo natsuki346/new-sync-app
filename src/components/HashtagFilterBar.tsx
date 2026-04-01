@@ -1,5 +1,7 @@
 'use client';
 
+import { RAINBOW } from '@/lib/rainbow';
+
 interface HashtagFilterBarProps {
   tags: string[];
   selected: string[];
@@ -37,9 +39,9 @@ export default function HashtagFilterBar({
         style={
           isAll
             ? {
-                background: 'var(--brand)',
-                color: '#0d0d1a',
-                border: '1px solid var(--brand)',
+                background: RAINBOW,
+                color: '#ffffff',
+                border: 'none',
               }
             : {
                 background: 'transparent',
@@ -62,9 +64,11 @@ export default function HashtagFilterBar({
             style={
               active
                 ? {
-                    background: 'rgba(201,168,76,0.2)',
-                    color: 'var(--brand)',
-                    border: '1px solid var(--brand)',
+                    background: RAINBOW,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text',
+                    border: '1px solid #7C6FE8',
                   }
                 : {
                     background: 'transparent',

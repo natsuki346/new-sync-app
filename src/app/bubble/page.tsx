@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { MOCK_USERS } from "@/lib/mockData";
+import ReactionFloatingEffect from "@/components/ReactionFloatingEffect";
+import SyncLogo from "@/components/SyncLogo";
 
 // ── 時間帯背景 ──────────────────────────────────────────────────────────
 
@@ -65,6 +67,21 @@ const REACTION_MESSAGES = [
 
 const REACT_EMOJIS = ["❤️", "😂", "😮", "😢", "👏"];
 
+const RANDOM_BORDER_COLORS = [
+  '#E84040', // 赤
+  '#E8A020', // オレンジ
+  '#48C468', // 緑
+  '#2890D8', // 青
+  '#7C6FE8', // 紫
+  '#D455A8', // ピンク
+  '#20C8C8', // シアン
+  '#E8C820', // 黄
+];
+
+function getRandomBorderColor(): string {
+  return RANDOM_BORDER_COLORS[Math.floor(Math.random() * RANDOM_BORDER_COLORS.length)];
+}
+
 // ── 型定義 ──────────────────────────────────────────────────────────────
 
 interface Bubble {
@@ -82,8 +99,9 @@ interface Bubble {
   timeLeft:  number;
   x:         number;
   y:         number;
-  textColor: string;
-  paused:    boolean;
+  textColor:   string;
+  paused:      boolean;
+  borderColor?: string;
 }
 
 interface PopBurst {
@@ -116,13 +134,15 @@ const makeId = () => Math.random().toString(36).slice(2, 9);
 
 // ── BubbleItem ──────────────────────────────────────────────────────────
 
-function BubbleItem({ b, onTap, onQuickLike, setRef, timeLeft, isLiked }: {
-  b:           Bubble;
-  onTap:       (clientX: number, clientY: number) => void;
-  onQuickLike: () => void;
-  setRef:      (el: HTMLDivElement | null) => void;
-  timeLeft:    number;
-  isLiked:     boolean;
+function BubbleItem({ b, onTap, onQuickLike, setRef, timeLeft, isLiked, reactionEmoji, bubbleBorderColor }: {
+  b:                 Bubble;
+  onTap:             (clientX: number, clientY: number) => void;
+  onQuickLike:       () => void;
+  setRef:            (el: HTMLDivElement | null) => void;
+  timeLeft:          number;
+  isLiked:           boolean;
+  reactionEmoji:     string;
+  bubbleBorderColor: string;
 }) {
   const [isNew, setIsNew]       = useState(true);
   const physicsInitRef           = useRef(false);
@@ -149,6 +169,7 @@ function BubbleItem({ b, onTap, onQuickLike, setRef, timeLeft, isLiked }: {
         top:        0,
         left:       0,
         width:      b.width,
+        zIndex:     10,
         willChange: "transform",
         cursor:     b.isOwn ? "default" : "pointer",
         pointerEvents: b.isOwn ? "none" : "auto",
@@ -172,7 +193,21 @@ function BubbleItem({ b, onTap, onQuickLike, setRef, timeLeft, isLiked }: {
           padding:              "5px 8px 5px 5px",
           background:           "rgba(255,255,255,0.08)",
           borderRadius:         20,
-          border:               "1.5px solid #C9A84C",
+          ...((() => {
+            const borderColor = b.isOwn
+              ? bubbleBorderColor
+              : (b.borderColor ?? '#E84040');
+            return {
+              border: borderColor === 'rainbow'
+                ? '1.5px solid transparent'
+                : borderColor === 'transparent'
+                  ? 'none'
+                  : `1.5px solid ${borderColor}`,
+              borderImage: borderColor === 'rainbow'
+                ? 'linear-gradient(to right,#7C6FE8,#D455A8,#E84040,#E8A020,#48C468,#2890D8) 1'
+                : 'none',
+            };
+          })()),
           boxShadow:            "inset 0 1px 2px rgba(255,255,255,0.15)",
           animation:            isDanger ? "pururu 0.4s ease-in-out infinite" : "none",
           backdropFilter:       "blur(2px)",
@@ -196,8 +231,8 @@ function BubbleItem({ b, onTap, onQuickLike, setRef, timeLeft, isLiked }: {
               width:          24,
               height:         24,
               borderRadius:   "50%",
-              background:     "rgba(201,168,76,0.15)",
-              border:         "1px solid rgba(201,168,76,0.35)",
+              background:     "rgba(255,26,26,0.15)",
+              border:         "1px solid rgba(255,26,26,0.35)",
               display:        "flex",
               alignItems:     "center",
               justifyContent: "center",
@@ -230,9 +265,9 @@ function BubbleItem({ b, onTap, onQuickLike, setRef, timeLeft, isLiked }: {
                 width:                   26,
                 height:                  26,
                 borderRadius:            "50%",
-                background:              isLiked ? "rgba(201,168,76,0.28)" : "rgba(255,255,255,0.06)",
-                border:                  isLiked ? "1px solid rgba(201,168,76,0.60)" : "1px solid rgba(255,255,255,0.14)",
-                boxShadow:               isLiked ? "0 0 8px rgba(201,168,76,0.50)" : "none",
+                background:              isLiked ? "rgba(255,26,26,0.28)" : "rgba(255,255,255,0.06)",
+                border:                  isLiked ? "1px solid rgba(255,26,26,0.60)" : "1px solid rgba(255,255,255,0.14)",
+                boxShadow:               isLiked ? "0 0 8px rgba(255,26,26,0.50)" : "none",
                 display:                 "flex",
                 alignItems:              "center",
                 justifyContent:          "center",
@@ -243,7 +278,7 @@ function BubbleItem({ b, onTap, onQuickLike, setRef, timeLeft, isLiked }: {
                 WebkitTapHighlightColor: "transparent",
               }}
             >
-              👍
+              {reactionEmoji}
             </div>
           )}
         </div>
@@ -303,7 +338,7 @@ function BubbleActionMenu({ menu, onReact, onDm, onProfile, onClose }: {
           width:                ACTION_MENU_W,
           zIndex:               29,
           background:           "#0d0d1a",
-          border:               "0.5px solid rgba(201,168,76,0.32)",
+          border:               "0.5px solid rgba(255,26,26,0.32)",
           borderRadius:         20,
           padding:              "14px",
           boxShadow:            "0 8px 36px rgba(0,0,0,0.65), 0 0 0 0.5px rgba(255,255,255,0.05)",
@@ -317,13 +352,13 @@ function BubbleActionMenu({ menu, onReact, onDm, onProfile, onClose }: {
         <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
           <div style={{
             width:24, height:24, borderRadius:"50%",
-            background:"rgba(201,168,76,0.15)", border:"1px solid rgba(201,168,76,0.35)",
+            background:"rgba(255,26,26,0.15)", border:"1px solid rgba(255,26,26,0.35)",
             display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, flexShrink:0,
           }}>
             {menu.bubble.avatar}
           </div>
           <div style={{ flex:1, minWidth:0 }}>
-            <div style={{ fontSize:12, fontWeight:700, color:"#C9A84C", lineHeight:1.3, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
+            <div style={{ fontSize:12, fontWeight:700, color:"#FF1A1A", lineHeight:1.3, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
               {menu.bubble.text.slice(0, 14)}
             </div>
             <div style={{ fontSize:10, color:"rgba(255,255,255,0.38)", lineHeight:1.2 }}>
@@ -414,7 +449,7 @@ function DMSheet({ state, message, onMessageChange, onSend, onClose }: {
           width:          375,
           zIndex:         46,
           background:     "#0d0d1a",
-          borderTop:      "0.5px solid rgba(201,168,76,0.30)",
+          borderTop:      "0.5px solid rgba(255,26,26,0.30)",
           borderRadius:   "24px 24px 0 0",
           padding:        "0 0 env(safe-area-inset-bottom, 0)",
           boxShadow:      "0 -8px 40px rgba(0,0,0,0.70)",
@@ -432,7 +467,7 @@ function DMSheet({ state, message, onMessageChange, onSend, onClose }: {
           <div style={{ display:"flex", alignItems:"center", gap:8 }}>
             <span style={{ fontSize:20 }}>{state.userIcon}</span>
             <span style={{ fontSize:13, color:"rgba(255,255,255,0.60)" }}>
-              <span style={{ color:"#C9A84C", fontWeight:700 }}>@{state.userName}</span>
+              <span style={{ color:"#FF1A1A", fontWeight:700 }}>@{state.userName}</span>
               {" さんにDM"}
             </span>
           </div>
@@ -485,13 +520,13 @@ function DMSheet({ state, message, onMessageChange, onSend, onClose }: {
               borderRadius: 20,
               border:       "none",
               cursor:       message.trim() ? "pointer" : "default",
-              background:   message.trim() ? "linear-gradient(135deg,#C9A84C,#a8862e)" : "rgba(201,168,76,0.18)",
-              color:        message.trim() ? "#0d0d1a" : "rgba(201,168,76,0.38)",
+              background:   message.trim() ? "linear-gradient(135deg,#FF1A1A,#8B0000)" : "rgba(255,26,26,0.18)",
+              color:        message.trim() ? "#0d0d1a" : "rgba(255,26,26,0.38)",
               fontSize:     14,
               fontWeight:   700,
               letterSpacing:"0.04em",
               transition:   "all 0.18s",
-              boxShadow:    message.trim() ? "0 0 12px rgba(201,168,76,0.35)" : "none",
+              boxShadow:    message.trim() ? "0 0 12px rgba(255,26,26,0.35)" : "none",
               WebkitTapHighlightColor:"transparent",
             }}
           >
@@ -514,11 +549,15 @@ export default function BubblePage() {
   const [floatingEmojis,setFloatingEmojis]=useState<FloatingEmoji[]>([]);
   const [actionMenu,      setActionMenu]     = useState<ActionMenuState | null>(null);
   const [likedBubbleIds,  setLikedBubbleIds] = useState<Set<string>>(new Set());
+  const [reactionEmoji,   setReactionEmoji]  = useState<string>('👍');
   const [focusedBubbleId, setFocusedBubbleId]= useState<string | null>(null);
   const [input,           setInput]          = useState("");
   const [dmSheet,         setDmSheet]        = useState<DMSheetState | null>(null);
   const [dmMessage,       setDmMessage]      = useState("");
   const [toastMsg,        setToastMsg]       = useState<string | null>(null);
+  const [postCount,       setPostCount]      = useState(0);
+  const [viewerCount,     setViewerCount]    = useState(() => 5 + Math.floor(Math.random() * 496));
+  const [bubbleBorderColor, setBubbleBorderColor] = useState('#FF1A1A');
 
   const laneLastUsedRef  = useRef<number[]>(new Array(LANE_COUNT).fill(0));
   const bubblesRef       = useRef<Bubble[]>([]);
@@ -540,6 +579,44 @@ export default function BubblePage() {
   const focusedBubbleIdRef   = useRef<string | null>(null);
   const audioCtxRef          = useRef<AudioContext | null>(null);
   const playSoundRef     = useRef({ spawn: () => {}, burst: () => {} });
+
+  // viewerCount ゆっくり増減
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setViewerCount(prev => {
+        const delta     = Math.floor(Math.random() * 5) + 1;
+        const direction = Math.random() > 0.5 ? 1 : -1;
+        return Math.min(500, Math.max(5, prev + delta * direction));
+      });
+    }, 3000 + Math.random() * 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // bubble_style をlocalStorageから読み込んで枠色に反映（ページロード時1回）
+  useEffect(() => {
+    const raw = localStorage.getItem('bubble_style');
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed.borderColor === 'none') {
+          setBubbleBorderColor('transparent');
+        } else if (parsed.borderColor) {
+          setBubbleBorderColor(parsed.borderColor);
+        }
+      } catch { /* ignore */ }
+    }
+  }, []);
+
+  // リアクション絵文字をlocalStorageから読み込む
+  useEffect(() => {
+    const stored = localStorage.getItem('sync_reaction_emoji');
+    if (stored) setReactionEmoji(stored);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'sync_reaction_emoji') setReactionEmoji(e.newValue ?? '👍');
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   // 星・大気（クライアントサイドのみ生成）
   const MICRO  = useMemo(() => Array.from({ length: 90 }, (_, i) => ({ id:i,   left:(Math.sin(i*7.391)*0.5+0.5)*100, top:(Math.sin(i*3.714+1.2)*0.5+0.5)*90, size:0.5+(i%3)*0.18, op:0.10+(i%8)*0.05,  dur:4+(i%7)*0.7,  delay:(i%17)*0.31 })), []);
@@ -563,7 +640,7 @@ export default function BubblePage() {
         el.style.opacity = "";
         el.style.zIndex  = "";
       } else if (id === focusedBubbleId) {
-        el.style.filter  = "drop-shadow(0 0 12px rgba(201,168,76,0.8))";
+        el.style.filter  = "drop-shadow(0 0 12px rgba(255,26,26,0.8))";
         el.style.opacity = "1";
         el.style.zIndex  = "35";
       } else {
@@ -868,8 +945,9 @@ export default function BubblePage() {
       timeLeft:  BUBBLE_LIFETIME,
       x:         initX,
       y:         initY,
-      textColor: "#FFFFFF",
-      paused:    false,
+      textColor:   "#FFFFFF",
+      paused:      false,
+      borderColor: isOwn ? undefined : getRandomBorderColor(),
     };
 
     physicsRef.current.set(id, {
@@ -951,6 +1029,7 @@ export default function BubblePage() {
     if (!input.trim()) return;
     addBubble(input, true);
     setInput("");
+    setPostCount(prev => prev + 1);
   }
 
   // 共通：Bubbleを一時停止（フォーカス演出も同時起動）
@@ -1046,7 +1125,7 @@ export default function BubblePage() {
     const newEmojis: FloatingEmoji[] = Array.from({ length: 3 }, (_, i) => ({
       id:     emojiIdRef.current++,
       left:   0,
-      emoji:  "👍",
+      emoji:  reactionEmoji,
       size:   16 + Math.random() * 8,
       delay:  i * 60,
       fieldX: fx + (Math.random() - 0.5) * 24,
@@ -1091,27 +1170,29 @@ export default function BubblePage() {
   // ── レンダリング ──────────────────────────────────────────────────────
 
   return (
-    <div style={{ position:"relative", flex:1, minHeight:0, overflow:"hidden", background:"#0d0d1a" }}>
+    <div style={{ position:"relative", display:"flex", flexDirection:"column", height:"100dvh", overflow:"hidden", background:"#0d0d1a" }}>
 
       {/* ヘッダー */}
       <header style={{
-        position:"fixed", top:0, left:"50%", transform:"translateX(-50%)",
-        width:"375px", height:"48px",
+        position:"sticky", top:0, flexShrink:0,
+        width:"100%", height:"48px",
         display:"flex", justifyContent:"space-between", alignItems:"center",
         padding:"0 16px", zIndex:100,
         background:"transparent", pointerEvents:"none",
       }}>
-        <span style={{ color:"#C9A84C", fontSize:20, fontWeight:"bold", letterSpacing:"0.04em" }}>
-          SYNC.
-        </span>
-        <span style={{ display:"flex", alignItems:"center", gap:6 }}>
+        <SyncLogo width={120} />
+        <span style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <span style={{ display:"flex", alignItems:"center", gap:4 }}>
+            <span style={{ width:6, height:6, borderRadius:"50%", background:"#4ade80", display:"inline-block", boxShadow:"0 0 4px #4ade80" }} />
+            <span style={{ color:"rgba(255,255,255,0.7)", fontSize:11 }}>{viewerCount.toLocaleString()} viewing</span>
+          </span>
           <span style={{ color:"rgba(255,255,255,0.5)", fontSize:12 }}>{bubbles.length}/{MAX_BUBBLES}</span>
           <span style={{ color:"white", fontSize:14 }}>Bubble 🔴</span>
         </span>
       </header>
 
       {/* 大気背景 z-index:0 */}
-      <div style={{ position:"absolute", inset:0, zIndex:0, overflow:"hidden", pointerEvents:"none" }}>
+      <div style={{ position:"absolute", inset:"48px 0 0 0", zIndex:0, overflow:"hidden", pointerEvents:"none" }}>
         <div style={{ position:"absolute", inset:0, background:TIME_BG[tod] }} />
         {fading && (
           <div style={{
@@ -1150,8 +1231,8 @@ export default function BubblePage() {
         style={{
           position:  "relative",
           width:     "100%",
-          height:    "calc(100dvh - 80px - 48px)",
-          marginTop: 48,
+          flex:      1,
+          minHeight: 0,
           zIndex:    10,
           overflow:  "hidden",
         }}
@@ -1163,7 +1244,7 @@ export default function BubblePage() {
           left:          0,
           right:         0,
           height:        1,
-          background:    "rgba(201,168,76,0.4)",
+          background:    "rgba(255,26,26,0.4)",
           pointerEvents: "none",
           zIndex:        5,
         }} />
@@ -1176,6 +1257,8 @@ export default function BubblePage() {
             isLiked={likedBubbleIds.has(b.id)}
             onTap={(cx, cy) => handleTap(cx, cy, b)}
             onQuickLike={() => handleQuickLike(b)}
+            reactionEmoji={reactionEmoji}
+            bubbleBorderColor={bubbleBorderColor}
             setRef={el => {
               if (el) {
                 bubbleDivRefs.current.set(b.id, el);
@@ -1225,8 +1308,8 @@ export default function BubblePage() {
                 width:        p.size,
                 height:       p.size,
                 borderRadius: "50%",
-                background:   "#C9A84C",
-                boxShadow:    `0 0 ${p.size * 2}px #C9A84C`,
+                background:   "#FF1A1A",
+                boxShadow:    `0 0 ${p.size * 2}px #FF1A1A`,
                 top:          -p.size / 2,
                 left:         -p.size / 2,
                 ["--pdx" as string]: p.dx,
@@ -1248,7 +1331,7 @@ export default function BubblePage() {
             top:           m.y,
             fontSize:      14,
             fontWeight:    700,
-            color:         "#C9A84C",
+            color:         "#FF1A1A",
             textShadow:    "0 1px 6px rgba(0,0,0,0.8)",
             whiteSpace:    "nowrap",
             userSelect:    "none",
@@ -1273,7 +1356,7 @@ export default function BubblePage() {
         background:           "rgba(13,13,26,0.82)",
         backdropFilter:       "blur(20px)",
         WebkitBackdropFilter: "blur(20px)",
-        borderTop:            "0.5px solid rgba(201,168,76,0.22)",
+        borderTop:            "0.5px solid rgba(255,26,26,0.22)",
         padding:              "10px 14px",
         display:              "flex",
         alignItems:           "center",
@@ -1309,14 +1392,14 @@ export default function BubblePage() {
             style={{
               width:40, height:40, borderRadius:"50%", border:"none",
               cursor:     input.trim() ? "pointer" : "default",
-              background: input.trim() ? "linear-gradient(135deg,#C9A84C,#a8862e)" : "rgba(201,168,76,0.14)",
+              background: input.trim() ? "linear-gradient(135deg,#FF1A1A,#8B0000)" : "rgba(255,26,26,0.14)",
               display:"flex", alignItems:"center", justifyContent:"center",
               transition:"all 0.2s", flexShrink:0,
-              boxShadow: input.trim() ? "0 0 12px rgba(201,168,76,0.40)" : "none",
+              boxShadow: input.trim() ? "0 0 12px rgba(255,26,26,0.40)" : "none",
             }}
           >
             <svg viewBox="0 0 20 20" fill="none" width={14} height={14}>
-              <path d="M2.5 10l15-7.5L10 10m7.5-7.5L10 10v7.5l2.5-3.5" stroke={input.trim()?"#0d0d1a":"rgba(201,168,76,0.38)"} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M2.5 10l15-7.5L10 10m7.5-7.5L10 10v7.5l2.5-3.5" stroke={input.trim()?"#ffffff":"rgba(255,26,26,0.38)"} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
           </button>
         </div>
@@ -1353,7 +1436,7 @@ export default function BubblePage() {
           transform:    "translateX(-50%)",
           zIndex:       60,
           background:   "rgba(20,20,36,0.92)",
-          border:       "0.5px solid rgba(201,168,76,0.32)",
+          border:       "0.5px solid rgba(255,26,26,0.32)",
           borderRadius: 24,
           padding:      "10px 20px",
           fontSize:     13,
@@ -1439,6 +1522,13 @@ export default function BubblePage() {
         input::placeholder { color: rgba(255,255,255,0.28); }
         button:active { transform: scale(0.93); }
       `}</style>
+
+      {/* インスタライブ型リアクションエフェクト z-index:40 */}
+      <ReactionFloatingEffect
+        isActive={true}
+        onBurst={(x, y) => triggerPopBurstRef.current?.(x, y)}
+        triggerCount={postCount}
+      />
     </div>
   );
 }

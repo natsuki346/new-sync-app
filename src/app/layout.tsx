@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
+import FocusScrollHandler from "@/components/FocusScrollHandler";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -16,6 +17,16 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "SYNC.",
   description: "SYNC. — Social app",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "SYNC.",
+  },
+  themeColor: "#FF1A1A",
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 export default function RootLayout({
@@ -30,7 +41,8 @@ export default function RootLayout({
     >
       <body>
         {/* 375px phone frame — centered on desktop, full-screen on mobile */}
-        <div id="app-root" className="phone-frame">
+        <FocusScrollHandler />
+        <div id="app-root" className="phone-frame" style={{ height: '100dvh' }}>
           {/* Content area — each page manages its own scroll */}
           <div className="flex-1 flex flex-col min-h-0">
             {children}

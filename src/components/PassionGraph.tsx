@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { RAINBOW } from '@/lib/rainbow';
 
 export interface PassionItem {
   tag: string;
@@ -35,10 +36,8 @@ export function PassionGraph({ items }: { items: PassionItem[] }) {
       <div className="space-y-2.5">
         {visible.map((item, idx) => {
           const isTop     = idx < 3;
-          const barColor  = isTop
-            ? 'linear-gradient(90deg, var(--brand), #e0c060)'
-            : 'rgba(136,136,170,0.45)';
-          const textColor = isTop ? 'var(--brand)' : 'var(--muted)';
+          const barColor  = isTop ? RAINBOW : 'rgba(136,136,170,0.45)';
+          const textColor = isTop ? '#7C6FE8' : 'var(--muted)';
 
           return (
             <div key={item.tag} className="flex items-center gap-2.5">
@@ -81,7 +80,13 @@ export function PassionGraph({ items }: { items: PassionItem[] }) {
         <button
           onClick={() => setExpanded((v) => !v)}
           className="mt-3 text-xs font-semibold active:opacity-60 transition-opacity"
-          style={{ color: 'var(--brand)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+          style={{
+            color: 'var(--foreground)',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 0,
+            background: 'none',
+          }}
         >
           {expanded ? '折りたたむ' : 'すべて表示'}
         </button>

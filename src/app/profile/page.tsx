@@ -2,8 +2,9 @@
 
 import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { CURRENT_USER, MY_POSTS, MEMORY_DATA, MOCK_USERS, type Post, type MemoryDayData } from '@/lib/mockData';
+import { CURRENT_USER, MY_POSTS, MEMORY_DATA, MOCK_USERS, type Post, type MemoryDayData, type Reaction } from '@/lib/mockData';
 import { PassionGraph, MY_PASSION } from '@/components/PassionGraph';
+import { RAINBOW } from '@/lib/rainbow';
 
 // ── 友達モックデータ（mockData.ts の MOCK_USERS から友達のみ抽出） ─
 const FRIENDS_MOCK = MOCK_USERS.filter((u) => u.isFriend);
@@ -341,6 +342,18 @@ const FRIENDS_COUNT = FRIENDS_MOCK.length;
 
 const AVATAR_OPTIONS = ['✨', '🌸', '🎵', '🎨', '📸', '🌙', '☕', '🎸', '🌊', '💻', '🖋️', '🎞️'];
 
+const CARD_COLOR_PRESETS = [
+  { label: 'デフォルト', value: '' },
+  { label: '紫',         value: '#2D1B69' },
+  { label: '赤',         value: '#3D0000' },
+  { label: '青',         value: '#0D1F3C' },
+  { label: '緑',         value: '#0D2D1A' },
+  { label: 'ピンク',     value: '#3D0D1F' },
+  { label: '透明',       value: 'transparent' },
+];
+
+const REACTION_EMOJI_OPTIONS = ['👍', '❤️', '🔥', '✨', '👏', '😭', '🎵', '⚡'];
+
 function EditModal({
   name, handle, bio, avatar,
   onSave, onClose,
@@ -349,10 +362,16 @@ function EditModal({
   onSave: (d: { name: string; handle: string; bio: string; avatar: string }) => void;
   onClose: () => void;
 }) {
-  const [dName,   setDName]   = useState(name);
-  const [dHandle, setDHandle] = useState(handle);
-  const [dBio,    setDBio]    = useState(bio);
-  const [dAvatar, setDAvatar] = useState(avatar);
+  const [dName,          setDName]          = useState(name);
+  const [dHandle,        setDHandle]        = useState(handle);
+  const [dBio,           setDBio]           = useState(bio);
+  const [dAvatar,        setDAvatar]        = useState(avatar);
+  const [dCardColor,     setDCardColor]     = useState<string>(() =>
+    typeof window !== 'undefined' ? (localStorage.getItem('sync_card_color') ?? '') : ''
+  );
+  const [dReactionEmoji, setDReactionEmoji] = useState<string>(() =>
+    typeof window !== 'undefined' ? (localStorage.getItem('sync_reaction_emoji') ?? '👍') : '👍'
+  );
 
   return (
     <>
@@ -415,7 +434,7 @@ function EditModal({
                   onClick={() => setDAvatar(av)}
                   className="w-11 h-11 rounded-full flex items-center justify-center text-2xl transition-all active:scale-90"
                   style={{
-                    background: dAvatar === av ? 'rgba(201,168,76,0.15)' : 'var(--surface-2)',
+                    background: dAvatar === av ? 'rgba(255,26,26,0.15)' : 'var(--surface-2)',
                     border: dAvatar === av ? '2px solid var(--brand)' : '2px solid transparent',
                   }}
                 >
@@ -437,7 +456,7 @@ function EditModal({
                 border: '1px solid var(--surface-2)',
                 color: 'var(--foreground)',
               }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(201,168,76,0.4)')}
+              onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(255,26,26,0.4)')}
               onBlur={(e)  => (e.currentTarget.style.borderColor = 'var(--surface-2)')}
             />
           </div>
@@ -454,7 +473,7 @@ function EditModal({
                 border: '1px solid var(--surface-2)',
                 color: 'var(--foreground)',
               }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(201,168,76,0.4)')}
+              onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(255,26,26,0.4)')}
               onBlur={(e)  => (e.currentTarget.style.borderColor = 'var(--surface-2)')}
             />
           </div>
@@ -472,9 +491,60 @@ function EditModal({
                 border: '1px solid var(--surface-2)',
                 color: 'var(--foreground)',
               }}
-              onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(201,168,76,0.4)')}
+              onFocus={(e) => (e.currentTarget.style.borderColor = 'rgba(255,26,26,0.4)')}
               onBlur={(e)  => (e.currentTarget.style.borderColor = 'var(--surface-2)')}
             />
+          </div>
+
+          {/* 投稿カードの色 */}
+          <div>
+            <p className="text-xs font-semibold mb-3" style={{ color: 'var(--muted)' }}>
+              自分の投稿カード色
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {CARD_COLOR_PRESETS.map(({ label, value }) => (
+                <button
+                  key={value || 'default'}
+                  onClick={() => { setDCardColor(value); localStorage.setItem('sync_card_color', value); }}
+                  className="flex flex-col items-center gap-1 active:scale-90 transition-transform"
+                >
+                  <div
+                    style={{
+                      width: 40, height: 40,
+                      borderRadius: 12,
+                      background: value || 'var(--surface)',
+                      border: dCardColor === value
+                        ? '2px solid var(--brand)'
+                        : '2px solid var(--surface-2)',
+                      boxSizing: 'border-box',
+                    }}
+                  />
+                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* 即時リアクション絵文字 */}
+          <div>
+            <p className="text-xs font-semibold mb-3" style={{ color: 'var(--muted)' }}>
+              即時リアクション絵文字
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {REACTION_EMOJI_OPTIONS.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => { setDReactionEmoji(emoji); localStorage.setItem('sync_reaction_emoji', emoji); }}
+                  className="w-11 h-11 rounded-full flex items-center justify-center text-2xl transition-all active:scale-90"
+                  style={{
+                    background: dReactionEmoji === emoji ? 'rgba(255,26,26,0.15)' : 'var(--surface-2)',
+                    border: dReactionEmoji === emoji ? '2px solid var(--brand)' : '2px solid transparent',
+                  }}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -502,6 +572,10 @@ export default function ProfilePage() {
   const [showTagManager, setShowTagManager] = useState(false);
   const [pinnedIds,      setPinnedIds]      = useState<string[]>([]);
   const [pinToast,       setPinToast]       = useState('');
+  const [hashtagColor,   setHashtagColor]   = useState(() => {
+    if (typeof window === 'undefined') return '';
+    return localStorage.getItem('sync_hashtag_color') || '';
+  });
 
   function handleSave(d: { name: string; handle: string; bio: string; avatar: string }) {
     setName(d.name);
@@ -539,7 +613,7 @@ export default function ProfilePage() {
           <div
             className="absolute inset-0"
             style={{
-              background: 'radial-gradient(ellipse at 65% 40%, rgba(201,168,76,0.12) 0%, transparent 65%)',
+              background: 'radial-gradient(ellipse at 65% 40%, rgba(255,26,26,0.12) 0%, transparent 65%)',
             }}
           />
         </div>
@@ -655,29 +729,29 @@ export default function ProfilePage() {
         {/* 投稿タブ */}
         <button
           onClick={() => setActiveTab('posts')}
-          className="flex-1 py-3 flex items-center justify-center transition-all active:opacity-70"
-          style={{
-            color: activeTab === 'posts' ? 'var(--brand)' : 'var(--muted)',
-            borderBottom: activeTab === 'posts' ? '2px solid var(--brand)' : '2px solid transparent',
-          }}
+          className="flex-1 py-3 flex items-center justify-center transition-all active:opacity-70 relative"
+          style={{ color: activeTab === 'posts' ? '#7C6FE8' : 'var(--muted)' }}
         >
-          <svg viewBox="0 0 24 24" fill={activeTab === 'posts' ? 'var(--brand)' : 'none'} stroke="currentColor" strokeWidth={1.8} className="w-5 h-5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-5 h-5">
             <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
           </svg>
+          {activeTab === 'posts' && (
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, background: RAINBOW }} />
+          )}
         </button>
 
         {/* メモリータブ */}
         <button
           onClick={() => setActiveTab('memory')}
-          className="flex-1 py-3 flex items-center justify-center transition-all active:opacity-70"
-          style={{
-            color: activeTab === 'memory' ? 'var(--brand)' : 'var(--muted)',
-            borderBottom: activeTab === 'memory' ? '2px solid var(--brand)' : '2px solid transparent',
-          }}
+          className="flex-1 py-3 flex items-center justify-center transition-all active:opacity-70 relative"
+          style={{ color: activeTab === 'memory' ? '#7C6FE8' : 'var(--muted)' }}
         >
-          <svg viewBox="0 0 24 24" fill={activeTab === 'memory' ? 'var(--brand)' : 'none'} stroke="currentColor" strokeWidth={1.8} className="w-5 h-5">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-5 h-5">
             <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
           </svg>
+          {activeTab === 'memory' && (
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, background: RAINBOW }} />
+          )}
         </button>
       </div>
 
@@ -686,7 +760,7 @@ export default function ProfilePage() {
         <div className="flex flex-col pb-10">
           {/* ピン済み */}
           <div className="px-4 pt-4 pb-1">
-            <p className="text-[11px] font-bold uppercase tracking-wider mb-3 flex items-center gap-1.5" style={{ color: '#C9A84C' }}>
+            <p className="text-[11px] font-bold uppercase tracking-wider mb-3 flex items-center gap-1.5" style={{ color: '#FF1A1A' }}>
               <span>📌</span> Pinned ({pinnedPosts.length}/3)
             </p>
             {pinnedPosts.length === 0 ? (
@@ -694,7 +768,7 @@ export default function ProfilePage() {
             ) : (
               <div style={{ borderTop: '1px solid var(--surface-2)' }}>
                 {pinnedPosts.map(post => (
-                  <ProfilePostRow key={post.id} post={post} isPinned onTogglePin={handleTogglePin} />
+                  <ProfilePostRow key={post.id} post={post} isPinned onTogglePin={handleTogglePin} hashtagBorderColor={hashtagColor || undefined} />
                 ))}
               </div>
             )}
@@ -709,7 +783,7 @@ export default function ProfilePage() {
           ) : (
             <div style={{ borderTop: '1px solid var(--surface-2)' }}>
               {unpinnedPosts.map(post => (
-                <ProfilePostRow key={post.id} post={post} isPinned={false} onTogglePin={handleTogglePin} />
+                <ProfilePostRow key={post.id} post={post} isPinned={false} onTogglePin={handleTogglePin} hashtagBorderColor={hashtagColor || undefined} />
               ))}
             </div>
           )}
@@ -724,7 +798,7 @@ export default function ProfilePage() {
         <div
           style={{
             position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)',
-            background: 'rgba(30,20,60,0.95)', border: '1px solid rgba(201,168,76,0.5)',
+            background: 'rgba(30,20,60,0.95)', border: '1px solid rgba(255,26,26,0.5)',
             color: '#fff', fontSize: 13, fontWeight: 600,
             padding: '10px 20px', borderRadius: 24, zIndex: 300,
             boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
@@ -760,10 +834,11 @@ export default function ProfilePage() {
 
 // ── 投稿行 ────────────────────────────────────────────────────────
 
-function ProfilePostRow({ post, isPinned, onTogglePin }: {
+function ProfilePostRow({ post, isPinned, onTogglePin, hashtagBorderColor }: {
   post: Post;
   isPinned?: boolean;
   onTogglePin?: (id: string) => void;
+  hashtagBorderColor?: string;
 }) {
   return (
     <div
@@ -792,7 +867,7 @@ function ProfilePostRow({ post, isPinned, onTogglePin }: {
               onClick={(e) => { e.stopPropagation(); onTogglePin(post.id); }}
               className="w-7 h-7 flex items-center justify-center rounded-full active:scale-90 transition-all"
               style={{
-                background: isPinned ? 'rgba(201,168,76,0.18)' : 'transparent',
+                background: isPinned ? 'rgba(255,26,26,0.18)' : 'transparent',
                 fontSize: 13,
                 opacity: isPinned ? 1 : 0.35,
               }}
@@ -813,10 +888,14 @@ function ProfilePostRow({ post, isPinned, onTogglePin }: {
             <span
               key={tag}
               className="text-xs px-2 py-0.5 rounded-full"
-              style={{
-                background: 'rgba(201,168,76,0.08)',
-                border: '1px solid rgba(201,168,76,0.2)',
-                color: 'var(--brand)',
+              style={hashtagBorderColor ? {
+                background: 'transparent',
+                border: `1.5px solid ${hashtagBorderColor}`,
+                color: '#ffffff',
+              } : {
+                background: `linear-gradient(var(--surface), var(--surface)) padding-box, ${RAINBOW} border-box`,
+                border: '1.5px solid transparent',
+                color: '#ffffff',
               }}
             >
               {tag}
@@ -918,19 +997,19 @@ function MemoryCalendarTab() {
               onClick={() => setSelectedDay(isSelected ? null : key)}
               className="flex flex-col items-center py-1.5 rounded-xl transition-all active:scale-90"
               style={{
-                background: isSelected ? 'rgba(201,168,76,0.15)' : 'transparent',
-                border: isSelected ? '1.5px solid rgba(201,168,76,0.45)' : '1.5px solid transparent',
+                background: isSelected ? 'rgba(255,26,26,0.15)' : 'transparent',
+                border: isSelected ? '1.5px solid rgba(255,26,26,0.45)' : '1.5px solid transparent',
               }}
             >
               <span className="text-[13px] leading-tight"
                 style={{
                   fontWeight: isToday ? 800 : 500,
-                  color: isToday ? '#C9A84C' : dow === 0 ? '#E63946' : dow === 6 ? '#4A9EFF' : 'rgba(255,255,255,0.82)',
+                  color: isToday ? '#FF1A1A' : dow === 0 ? '#E63946' : dow === 6 ? '#4A9EFF' : 'rgba(255,255,255,0.82)',
                 }}>
                 {day}
               </span>
               <div className="flex gap-[2px] mt-0.5 h-[9px] items-center">
-                {hasPosts       && <span style={{ fontSize: 6, color: '#C9A84C', lineHeight: 1 }}>●</span>}
+                {hasPosts       && <span style={{ fontSize: 6, color: '#FF1A1A', lineHeight: 1 }}>●</span>}
                 {hasConnections && <span style={{ fontSize: 6, color: '#E63946', lineHeight: 1 }}>♡</span>}
                 {hasPhotos      && <span style={{ fontSize: 6, color: '#4A9EFF', lineHeight: 1 }}>■</span>}
               </div>
@@ -957,11 +1036,57 @@ function MemoryCalendarTab() {
             <div>
               {selectedData.posts.length > 0 && (
                 <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--surface-2)' }}>
-                  <p className="text-[11px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1" style={{ color: '#C9A84C' }}>
+                  <p className="text-[11px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1" style={{ color: '#FF1A1A' }}>
                     <span>📝</span> 投稿
                   </p>
                   {selectedData.posts.map(p => (
-                    <p key={p.id} className="text-sm leading-relaxed py-0.5" style={{ color: 'rgba(255,255,255,0.82)' }}>{p.text}</p>
+                    <div key={p.id} className="py-1">
+                      {/* 投稿テキスト */}
+                      <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.82)' }}>
+                        {p.text}
+                      </p>
+                      {/* リアクター一覧 */}
+                      {p.reactions && p.reactions.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {p.reactions.map((r: Reaction) => (
+                            <button
+                              key={r.id}
+                              onClick={() => router.push(`/profile/${r.userId}`)}
+                              style={{
+                                display:      'flex',
+                                alignItems:   'center',
+                                gap:          4,
+                                background:   'rgba(255,255,255,0.08)',
+                                border:       '0.5px solid rgba(255,255,255,0.15)',
+                                borderRadius: 20,
+                                padding:      '4px 8px',
+                                cursor:       'pointer',
+                              }}
+                            >
+                              {/* 絵文字アイコン（丸背景） */}
+                              <span style={{
+                                width:          18,
+                                height:         18,
+                                borderRadius:   '50%',
+                                background:     'linear-gradient(135deg,#FF1A1A,#8B0000)',
+                                display:        'flex',
+                                alignItems:     'center',
+                                justifyContent: 'center',
+                                fontSize:       11,
+                                lineHeight:     1,
+                                flexShrink:     0,
+                              }}>
+                                {r.avatar}
+                              </span>
+                              {/* リアクション絵文字 */}
+                              <span style={{ fontSize: 13, lineHeight: 1 }}>{r.emoji}</span>
+                              {/* ユーザー名 */}
+                              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>{r.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
@@ -1032,7 +1157,7 @@ function MemoryCalendarTab() {
 
       {/* 凡例 */}
       <div className="flex gap-5 justify-center mt-4 px-4">
-        <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}><span style={{ color: '#C9A84C' }}>●</span> 投稿</span>
+        <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}><span style={{ color: '#FF1A1A' }}>●</span> 投稿</span>
         <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}><span style={{ color: '#E63946' }}>♡</span> つながり</span>
         <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}><span style={{ color: '#4A9EFF' }}>■</span> 保存</span>
       </div>

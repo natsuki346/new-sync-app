@@ -3,12 +3,14 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import SyncLogo from '@/components/SyncLogo';
 import PostCard from '@/components/PostCard';
 import HashtagFilterBar from '@/components/HashtagFilterBar';
 import {
   CONVERSATIONS, TIMELINE_POSTS, FRIENDS_POSTS,
-  FOLLOWED_HASHTAGS, CURRENT_USER, type Post,
+  FOLLOWED_HASHTAGS, CURRENT_USER, getTagEngagement, type Post,
 } from '@/lib/mockData';
+import { RAINBOW } from '@/lib/rainbow';
 
 // ── 時間帯バブルカラー ───────────────────────────────────────────
 function getBubbleColors(): string[] {
@@ -85,6 +87,7 @@ const TABS = ['Timeline', 'Friends'] as const;
 type Tab = typeof TABS[number];
 
 const hasUnread = CONVERSATIONS.some((c) => c.unread);
+const DM_UNREAD = CONVERSATIONS.filter((c) => c.unread).length;
 const NOTIF_UNREAD = 3;
 
 // ── サイドドロワーメニュー ─────────────────────────────────────────
@@ -248,9 +251,11 @@ function SideDrawer({
 
         {/* ロゴ */}
         <div style={{ padding: '0 20px 32px' }}>
-          <span style={{ fontSize: 12, fontWeight: 900, letterSpacing: '-0.02em' }}>
-            <span style={{ color: 'var(--brand)' }}>S</span>
-            <span style={{ color: 'rgba(255,255,255,0.3)' }}>YNC.</span>
+          <span style={{
+            fontSize: 12, fontWeight: 900, letterSpacing: '-0.02em',
+            backgroundImage: RAINBOW, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
+          }}>
+            SYNC.
           </span>
         </div>
       </div>
@@ -369,7 +374,7 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
       }}>
         <div style={{
           background: '#1a1a2e',
-          border: '2px solid #C9A84C',
+          border: '2px solid #FF1A1A',
           borderRadius: 20,
           padding: '32px 24px',
           textAlign: 'center',
@@ -377,7 +382,7 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
           width: '80%',
         }}>
           <div style={{ fontSize: 48, marginBottom: 12 }}>🚫</div>
-          <div style={{ fontSize: 32, fontWeight: 'bold', color: '#C9A84C', marginBottom: 8 }}>
+          <div style={{ fontSize: 32, fontWeight: 'bold', color: '#FF1A1A', marginBottom: 8 }}>
             Opps!
           </div>
           <div style={{ color: '#fff', fontSize: 14, marginBottom: 24 }}>
@@ -386,7 +391,7 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
           <button
             onClick={() => setShowOpps(false)}
             style={{
-              background: '#C9A84C', color: '#000',
+              background: '#FF1A1A', color: '#fff',
               border: 'none', borderRadius: 12,
               padding: '10px 32px', fontWeight: 'bold',
               fontSize: 16, cursor: 'pointer',
@@ -402,7 +407,7 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
       ref={modalRef}
       className="absolute inset-0 z-50 flex flex-col overflow-hidden"
       style={{
-        background: '#ffffff',
+        background: '#111111',
         transform: open ? 'translateY(0)' : 'translateY(100%)',
         transition: open ? 'transform 0.25s ease-out' : 'transform 0.26s ease-in',
         pointerEvents: open ? 'auto' : 'none',
@@ -411,9 +416,9 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
       {/* ── ヘッダー ── */}
       <div style={{
         flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '16px 16px 12px', background: '#ffffff',
+        padding: '16px 16px 12px', background: '#111111',
       }}>
-        <button style={{ color: '#1a1a1a', fontSize: 15, fontWeight: 500, padding: '0 4px' }} onClick={handleClose}>
+        <button style={{ color: '#ffffff', fontSize: 15, fontWeight: 500, padding: '0 4px' }} onClick={handleClose}>
           キャンセル
         </button>
         <div />
@@ -448,8 +453,8 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
             rows={4}
             style={{
               width: '100%', resize: 'none', outline: 'none',
-              background: 'transparent', color: '#1a1a1a',
-              fontSize: 19, lineHeight: 1.6, caretColor: '#E63946',
+              background: 'transparent', color: '#ffffff',
+              fontSize: 19, lineHeight: 1.6, caretColor: '#FF1A1A',
               border: 'none', fontFamily: 'inherit',
             }}
             placeholder="今何してる？"
@@ -457,9 +462,9 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
             value={text}
             onChange={(e) => setText(e.target.value)}
           />
-          <style>{`textarea::-webkit-input-placeholder{color:#999;}textarea::placeholder{color:#999;}`}</style>
+          <style>{`textarea::-webkit-input-placeholder{color:#666;}textarea::placeholder{color:#666;}`}</style>
           {media && (
-            <div style={{ position: 'relative', marginTop: 12, borderRadius: 16, overflow: 'hidden', border: '1px solid #e5e5e5' }}>
+            <div style={{ position: 'relative', marginTop: 12, borderRadius: 16, overflow: 'hidden', border: '1px solid #333' }}>
               {media.type === 'image' ? (
                 <img src={media.url} alt="preview" style={{ width: '100%', objectFit: 'cover', maxHeight: 280, display: 'block' }} />
               ) : (
@@ -488,15 +493,15 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
       <div style={{
         flexShrink: 0, display: 'flex', alignItems: 'center',
         padding: '8px 8px', paddingBottom: 'max(env(safe-area-inset-bottom, 8px), 8px)',
-        borderTop: '1px solid #e5e5e5', background: '#ffffff',
+        borderTop: '1px solid #333', background: '#111111',
       }}>
         <button
           style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: 'none', background: 'transparent', cursor: 'pointer' }}
           onClick={() => imageRef.current?.click()}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" strokeWidth={1.8} style={{ width: 20, height: 20 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth={1.8} style={{ width: 20, height: 20 }}>
             <rect x="3" y="3" width="18" height="18" rx="3" />
-            <circle cx="8.5" cy="8.5" r="1.5" fill="#1a1a1a" />
+            <circle cx="8.5" cy="8.5" r="1.5" fill="#ffffff" />
             <path strokeLinecap="round" d="M21 15l-5-5L5 21" />
           </svg>
         </button>
@@ -507,7 +512,7 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
           style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: 'none', background: 'transparent', cursor: 'pointer' }}
           onClick={() => cameraRef.current?.click()}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" strokeWidth={1.8} style={{ width: 20, height: 20 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth={1.8} style={{ width: 20, height: 20 }}>
             <path strokeLinecap="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
             <path strokeLinecap="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
           </svg>
@@ -515,11 +520,11 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
         <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
           onChange={(e) => handleFile(e.target.files?.[0])} />
 
-        <button style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 20, fontWeight: 900, color: '#1a1a1a' }}>
+        <button style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 20, fontWeight: 900, color: '#ffffff' }}>
           #
         </button>
         <button style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: 'none', background: 'transparent', cursor: 'pointer' }}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" strokeWidth={1.8} style={{ width: 20, height: 20 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth={1.8} style={{ width: 20, height: 20 }}>
             <path strokeLinecap="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
             <path strokeLinecap="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
           </svg>
@@ -532,7 +537,7 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
             </span>
           )}
           <svg width="26" height="26" viewBox="0 0 24 24" style={{ transform: 'rotate(-90deg)' }}>
-            <circle cx="12" cy="12" r={R} fill="none" stroke="#e5e5e5" strokeWidth="2.4" />
+            <circle cx="12" cy="12" r={R} fill="none" stroke="#333" strokeWidth="2.4" />
             <circle cx="12" cy="12" r={R} fill="none" stroke="#E63946" strokeWidth="2.4"
               strokeDasharray={CIRC} strokeDashoffset={dashOffset}
               strokeLinecap="round" style={{ transition: 'stroke-dashoffset 0.15s' }}
@@ -607,8 +612,8 @@ function ReplyModal({
           disabled={!text.trim()}
           className="px-5 py-1.5 rounded-full text-sm font-bold transition-colors"
           style={{
-            background: text.trim() ? 'var(--brand)' : 'rgba(201,168,76,0.25)',
-            color: text.trim() ? '#0d0d1a' : 'rgba(201,168,76,0.5)',
+            background: text.trim() ? 'var(--brand)' : 'rgba(255,26,26,0.25)',
+            color: text.trim() ? '#ffffff' : 'rgba(255,26,26,0.5)',
           }}
         >
           返信
@@ -715,6 +720,25 @@ export default function HomePage() {
   const [replyOpen,     setReplyOpen]     = useState(false);
   const [modalOpen,     setModalOpen]     = useState(false);
   const [feedPosts,     setFeedPosts]     = useState<Post[]>(TIMELINE_POSTS);
+  const [cardColor,     setCardColor]     = useState<string>('');
+  const [hashtagColor,  setHashtagColor]  = useState<string>('');
+  const [toastMsg,      setToastMsg]      = useState<string | null>(null);
+
+  useEffect(() => {
+    const bg = localStorage.getItem('sync_card_bg');
+    const legacy = localStorage.getItem('sync_card_color');
+    const stored = bg !== null ? bg : legacy;
+    if (stored !== null) setCardColor(stored);
+    const htc = localStorage.getItem('sync_hashtag_color');
+    if (htc) setHashtagColor(htc);
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'sync_card_bg') setCardColor(e.newValue ?? '');
+      else if (e.key === 'sync_card_color' && localStorage.getItem('sync_card_bg') === null) setCardColor(e.newValue ?? '');
+      else if (e.key === 'sync_hashtag_color') setHashtagColor(e.newValue ?? '');
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -745,13 +769,60 @@ export default function HomePage() {
     return Array.from(set);
   }, []);
 
+  function isTagEngaged(tag: string): boolean {
+    const tagName = tag.replace('#', '');
+    return getTagEngagement(tagName).unlocked;
+  }
+
+  function showToast(msg: string) {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3000);
+  }
+
   function openReply(post: Post) {
+    if (post.hashtags.length > 0 && !post.hashtags.some(isTagEngaged)) {
+      const tag = post.hashtags[0];
+      showToast(`${tag}のエンゲージメントを達成するとコメントできます`);
+      return;
+    }
     setReplyPost(post);
     setReplyOpen(true);
   }
 
+  function handleHashtagClick(tag: string) {
+    router.push(`/search?tag=${tag.replace('#', '')}`);
+  }
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
+
+      {/* ── トースト ────────────────────────────────────────────────── */}
+      {toastMsg && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 80,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 9999,
+            background: 'rgba(30,30,30,0.95)',
+            color: '#fff',
+            fontSize: 13,
+            fontWeight: 500,
+            padding: '10px 18px',
+            borderRadius: 24,
+            maxWidth: 320,
+            textAlign: 'center',
+            border: '1px solid rgba(255,255,255,0.12)',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+            pointerEvents: 'none',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+          }}
+        >
+          {toastMsg}
+        </div>
+      )}
 
       {/* ── サイドドロワー ─────────────────────────────────────────── */}
       <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
@@ -788,12 +859,7 @@ export default function HomePage() {
         </button>
 
         {/* 中央: ロゴ */}
-        <h1
-          className="text-xl font-bold tracking-widest"
-          style={{ color: 'var(--brand)' }}
-        >
-          SYNC.
-        </h1>
+        <SyncLogo width={120} />
 
         {/* 右: 通知・チャットアイコン */}
         <div className="flex items-center gap-1">
@@ -810,7 +876,7 @@ export default function HomePage() {
           {NOTIF_UNREAD > 0 && (
             <span
               className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] flex items-center justify-center rounded-full text-[9px] font-bold border-2"
-              style={{ background: '#E63946', borderColor: 'var(--background)', color: '#fff' }}
+              style={{ background: '#FF1A1A', borderColor: 'var(--background)', color: '#fff' }}
             >
               {NOTIF_UNREAD}
             </span>
@@ -825,11 +891,13 @@ export default function HomePage() {
           >
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
-          {hasUnread && (
+          {DM_UNREAD > 0 && (
             <span
-              className="absolute top-0.5 right-0.5 w-2.5 h-2.5 rounded-full border-2"
-              style={{ background: 'var(--brand)', borderColor: 'var(--background)' }}
-            />
+              className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] flex items-center justify-center rounded-full text-[9px] font-bold border-2"
+              style={{ background: '#FF1A1A', borderColor: 'var(--background)', color: '#fff' }}
+            >
+              {DM_UNREAD}
+            </span>
           )}
         </Link>
         </div>
@@ -845,13 +913,15 @@ export default function HomePage() {
             key={tab}
             onClick={() => setActiveTab(tab)}
             className="mr-6 py-3 text-sm font-medium relative transition-colors duration-200"
-            style={{ color: activeTab === tab ? 'var(--brand)' : 'var(--muted)' }}
+            style={activeTab === tab
+              ? { background: RAINBOW, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }
+              : { color: 'var(--muted)' }}
           >
             {tab}
             {activeTab === tab && (
               <span
                 className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
-                style={{ background: 'var(--brand)' }}
+                style={{ background: RAINBOW }}
               />
             )}
           </button>
@@ -864,8 +934,8 @@ export default function HomePage() {
         style={{
           bottom: 88, right: 16,
           width: 56, height: 56,
-          background: 'linear-gradient(135deg, #E63946, #C0000F)',
-          boxShadow: '0 4px 20px rgba(230,57,70,0.5)',
+          background: RAINBOW,
+          boxShadow: '0 4px 20px rgba(124,111,232,0.5)',
         }}
         onClick={() => setModalOpen(true)}
       >
@@ -903,7 +973,7 @@ export default function HomePage() {
             <div key={`tl-${timelineFilter.join(',')}`} className="feed-animate">
               {timelinePosts.length > 0 ? (
                 timelinePosts.map((post) => (
-                  <PostCard key={post.id} post={post} onReply={openReply} onUserClick={() => { const u = post.handle.replace('@', ''); router.push(u === 'you' ? '/profile' : `/profile/${u}`); }} />
+                  <PostCard key={post.id} post={post} onReply={openReply} onHashtagClick={handleHashtagClick} onUserClick={() => { const u = post.handle.replace('@', ''); router.push(u === 'you' ? '/profile' : `/profile/${u}`); }} cardColor={cardColor || undefined} hashtagBorderColor={hashtagColor || undefined} isReplyLocked={post.hashtags.length > 0 && !post.hashtags.some(isTagEngaged)} />
                 ))
               ) : (
                 <EmptyState message="No posts for the selected tags" />
@@ -922,7 +992,7 @@ export default function HomePage() {
             <div key={`fr-${friendsFilter.join(',')}`} className="feed-animate">
               {friendsPosts.length > 0 ? (
                 friendsPosts.map((post) => (
-                  <PostCard key={post.id} post={post} onReply={openReply} onUserClick={() => { const u = post.handle.replace('@', ''); router.push(u === 'you' ? '/profile' : `/profile/${u}`); }} />
+                  <PostCard key={post.id} post={post} onReply={openReply} onHashtagClick={handleHashtagClick} onUserClick={() => { const u = post.handle.replace('@', ''); router.push(u === 'you' ? '/profile' : `/profile/${u}`); }} cardColor={cardColor || undefined} hashtagBorderColor={hashtagColor || undefined} isReplyLocked={post.hashtags.length > 0 && !post.hashtags.some(isTagEngaged)} />
                 ))
               ) : (
                 <EmptyState message="No posts for the selected tags" />

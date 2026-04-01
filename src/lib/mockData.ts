@@ -654,43 +654,77 @@ export const MY_POSTS: Post[] = [
 ];
 
 // ── Memory Calendar ───────────────────────────────────────────────
+export type Reaction = {
+  id:       string;
+  emoji:    string;
+  name:     string;
+  username: string;
+  avatar:   string;
+  userId:   string;
+};
+
 export type MemoryDayData = {
-  posts: { id: string; text: string }[];
-  savedPhotos: { id: string; url: string }[];
+  posts:          { id: string; text: string; reactions?: Reaction[] }[];
+  savedPhotos:    { id: string; url: string }[];
   newConnections: { id: string; name: string; username: string; avatar: string; userId: string }[];
-  events: { id: string; name: string; eventId: string }[];
+  events:         { id: string; name: string; eventId: string }[];
 };
 
 export const MEMORY_DATA: Record<string, MemoryDayData> = {
   '2026-03-27': {
-    posts: [{ id: 'md1', text: '今日のライブ最高だった #jprock #live' }],
-    savedPhotos: [{ id: 'sp1', url: '' }],
+    posts: [{
+      id: 'md1',
+      text: '今日のライブ最高だった #jprock #live',
+      reactions: [
+        { id: 'r1', emoji: '🔥', name: 'yuki',  username: '@yuki',  avatar: '🌸', userId: 'yuki' },
+        { id: 'r2', emoji: '😭', name: 'kai',   username: '@kai',   avatar: '🔥', userId: 'kai'  },
+        { id: 'r3', emoji: '✨', name: 'hana',  username: '@hana',  avatar: '🌙', userId: 'hana' },
+        { id: 'r4', emoji: '❤️', name: 'ren',   username: '@ren',   avatar: '⚡', userId: 'ren'  },
+        { id: 'r5', emoji: '🫶', name: 'sora',  username: '@sora',  avatar: '💫', userId: 'sora' },
+      ],
+    }],
+    savedPhotos:    [{ id: 'sp1', url: '' }],
     newConnections: [{ id: 'nc1', name: 'hana', username: '@hana_night', avatar: '🌺', userId: 'hana' }],
-    events: [{ id: 'ev1', name: '渋谷ライブイベント', eventId: 'e2' }],
+    events:         [{ id: 'ev1', name: '渋谷ライブイベント', eventId: 'e2' }],
   },
   '2026-03-20': {
-    posts: [{ id: 'md2', text: '夜景きれい #night #photo' }],
-    savedPhotos: [],
+    posts: [{
+      id: 'md2',
+      text: '夜景きれい #night #photo',
+      reactions: [
+        { id: 'r6', emoji: '😭', name: 'sora',  username: '@sora',  avatar: '💫', userId: 'sora' },
+        { id: 'r7', emoji: '✨', name: 'yuki',  username: '@yuki',  avatar: '🌸', userId: 'yuki' },
+        { id: 'r8', emoji: '🫶', name: 'ren',   username: '@ren',   avatar: '⚡', userId: 'ren'  },
+      ],
+    }],
+    savedPhotos:    [],
     newConnections: [],
-    events: [],
+    events:         [],
   },
   '2026-03-15': {
     posts: [],
-    savedPhotos: [{ id: 'sp2', url: '' }, { id: 'sp3', url: '' }],
+    savedPhotos:    [{ id: 'sp2', url: '' }, { id: 'sp3', url: '' }],
     newConnections: [{ id: 'nc2', name: 'kai', username: '@kai_designs', avatar: '🎨', userId: 'kai' }],
-    events: [{ id: 'ev2', name: 'SYNC LIVE 2026 × Shinjuku', eventId: 'e1' }],
+    events:         [{ id: 'ev2', name: 'SYNC LIVE 2026 × Shinjuku', eventId: 'e1' }],
   },
   '2026-03-10': {
-    posts: [{ id: 'md3', text: '深夜のコーディング最高 #engineer #music' }],
-    savedPhotos: [],
+    posts: [{
+      id: 'md3',
+      text: '深夜のコーディング最高 #engineer #music',
+      reactions: [
+        { id: 'r9',  emoji: '🔥', name: 'kai',  username: '@kai',  avatar: '🔥', userId: 'kai'  },
+        { id: 'r10', emoji: '💯', name: 'hana', username: '@hana', avatar: '🌙', userId: 'hana' },
+      ],
+    }],
+    savedPhotos:    [],
     newConnections: [],
-    events: [],
+    events:         [],
   },
   '2026-03-05': {
     posts: [{ id: 'md4', text: '最近ずっとjprock聞いてる #jprock' }],
-    savedPhotos: [{ id: 'sp4', url: '' }],
+    savedPhotos:    [{ id: 'sp4', url: '' }],
     newConnections: [
-      { id: 'nc3', name: 'luna', username: '@luna_film', avatar: '🌙', userId: 'luna' },
+      { id: 'nc3', name: 'luna', username: '@luna_film',  avatar: '🌙', userId: 'luna' },
       { id: 'nc4', name: 'tomo', username: '@tomo_music', avatar: '🎞️', userId: 'tomo' },
     ],
     events: [],
@@ -811,8 +845,18 @@ export const HASHTAG_DATA: Record<string, HashtagEntry> = {
       { id: "ht-r1", user: { name: "yuki",   handle: "@yuki_syncs",    avatar: "🌸" }, content: "Front row at today's live.\nCouldn't stop crying. This is what music is for.", time: "2h ago",  likes: 312, comments: 48 },
       { id: "ht-r2", user: { name: "tomo",   handle: "@tomo_music",    avatar: "🎸" }, content: "The bass hits your whole body.\nThis band is on a different level.", time: "4h ago",  likes: 187, comments: 23 },
       { id: "ht-r3", user: { name: "mio",    handle: "@mio_melody",    avatar: "🎵" }, content: "The setlist was perfect, I knew every song.\nDefinitely coming back next year.", time: "1d ago",    likes: 256, comments: 38 },
-      { id: "ht-r4", user: { name: "azusa",  handle: "@azusa_piano",   avatar: "🎹" }, content: "Growing up on jprock, I'm so happy to see the new wave of bands rising.", time: "2d ago", likes: 94, comments: 11 },
-      { id: "ht-r5", user: { name: "kanon",  handle: "@kanon_strings", avatar: "🎻" }, content: "Music delivers what words\ncannot express.", time: "3d ago", likes: 143, comments: 19 },
+      { id: "ht-r4",  user: { name: "azusa",  handle: "@azusa_piano",   avatar: "🎹" }, content: "Growing up on jprock, I'm so happy to see the new wave of bands rising.", time: "2d ago", likes: 94, comments: 11 },
+      { id: "ht-r5",  user: { name: "kanon",  handle: "@kanon_strings", avatar: "🎻" }, content: "Music delivers what words\ncannot express.", time: "3d ago", likes: 143, comments: 19 },
+      { id: "ht-r6",  user: { name: "kai",    handle: "@kai_designs",   avatar: "🎨" }, content: "今日のライブ、ギターソロで泣いた。\nあの音はずっと忘れられない。", time: "5h ago",  likes: 221, comments: 34 },
+      { id: "ht-r7",  user: { name: "hana",   handle: "@hana_night",    avatar: "🌺" }, content: "初めて前列で観た。\n汗と熱気と音が全部混ざって最高だった。", time: "7h ago",  likes: 178, comments: 27 },
+      { id: "ht-r8",  user: { name: "nagi",   handle: "@nagi_brews",    avatar: "☕" }, content: "終演後もしばらく動けなかった。\n感情の置き場がわからなくて。", time: "10h ago", likes: 132, comments: 19 },
+      { id: "ht-r9",  user: { name: "ren",    handle: "@ren_frames",    avatar: "📸" }, content: "写真じゃ伝わらない迫力。\nでも撮らずにはいられない。", time: "12h ago", likes: 156, comments: 22 },
+      { id: "ht-r10", user: { name: "yuki",   handle: "@yuki_syncs",    avatar: "🌸" }, content: "毎年このバンドのライブに来てる。\nまた今年も泣かされた。", time: "1d ago",  likes: 289, comments: 41 },
+      { id: "ht-r11", user: { name: "tomo",   handle: "@tomo_music",    avatar: "🎸" }, content: "ドラムのパートが好きすぎる。\n体全体で聴く音楽ってこういうことだよな。", time: "1d ago",  likes: 198, comments: 28 },
+      { id: "ht-r12", user: { name: "mio",    handle: "@mio_melody",    avatar: "🎵" }, content: "新曲、初めて生で聴けた。\nCD音源より断然いい。", time: "2d ago",  likes: 241, comments: 36 },
+      { id: "ht-r13", user: { name: "kira",   handle: "@kira_dance",    avatar: "⭐" }, content: "jprock最高峰の一夜。\n語り継がれるライブだったと思う。", time: "2d ago",  likes: 167, comments: 24 },
+      { id: "ht-r14", user: { name: "luna",   handle: "@luna_writes",   avatar: "🌙" }, content: "バンドの絆が音楽に乗り移る感じ。\nこの瞬間のためにチケット取ってよかった。", time: "3d ago",  likes: 189, comments: 26 },
+      { id: "ht-r15", user: { name: "ryu",    handle: "@ryu_beats",     avatar: "🥁" }, content: "開演前の静寂と、一音目が鳴った瞬間。\nあの落差がたまらない。", time: "4d ago",  likes: 214, comments: 31 },
     ],
   },
   "#live": {
@@ -1017,3 +1061,32 @@ export const USER_TAGS: Record<string, string[]> = {
   "@sota_beats":    ["#music", "#dance"],
   "@sara_earth":    ["#cooking"],
 };
+
+// ── タグエンゲージメント（seedベース固定生成） ────────────────────
+// tagNameをseedにして毎回同じ値を返す（位置重みつきでばらつき改善）。
+export function getTagEngagement(tagName: string): {
+  postCount: number;
+  reactionCount: number;
+  unlocked: boolean;
+} {
+  const data: Record<string, { postCount: number; reactionCount: number }> = {
+    'jprock':    { postCount: 3, reactionCount: 10 }, // ✅ 解放
+    'live':      { postCount: 1, reactionCount: 4  }, // ❌ 未達成
+    'music':     { postCount: 3, reactionCount: 10 }, // ✅ 解放
+    'photo':     { postCount: 0, reactionCount: 2  }, // ❌ 未達成
+    'design':    { postCount: 2, reactionCount: 7  }, // ❌ 未達成
+    'night':     { postCount: 3, reactionCount: 10 }, // ✅ 解放
+    'coffee':    { postCount: 1, reactionCount: 9  }, // ❌ 未達成
+    'minimal':   { postCount: 0, reactionCount: 3  }, // ❌ 未達成
+    'band':      { postCount: 2, reactionCount: 10 }, // ❌ 未達成（投稿足りない）
+    'dance':     { postCount: 3, reactionCount: 6  }, // ❌ 未達成（リアクション足りない）
+    'sports':    { postCount: 3, reactionCount: 10 }, // ✅ 解放
+    'travel':    { postCount: 1, reactionCount: 1  }, // ❌ 未達成
+    'nightwalk': { postCount: 3, reactionCount: 10 }, // ✅ 解放
+    'words':     { postCount: 0, reactionCount: 5  }, // ❌ 未達成
+  };
+
+  const entry = data[tagName] ?? { postCount: 0, reactionCount: 0 };
+  const unlocked = entry.postCount >= 3 && entry.reactionCount >= 10;
+  return { ...entry, unlocked };
+}

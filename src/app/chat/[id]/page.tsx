@@ -295,7 +295,7 @@ export default function ChatDetailPage() {
                     isMe
                       ? {
                           background: 'var(--brand)',
-                          color: '#0d0d1a',
+                          color: '#ffffff',
                           borderRadius: '18px 18px 4px 18px',
                           fontWeight: 500,
                         }
@@ -413,7 +413,7 @@ export default function ChatDetailPage() {
               color: 'var(--foreground)',
             }}
             onFocus={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(201,168,76,0.4)';
+              e.currentTarget.style.borderColor = 'rgba(255,26,26,0.4)';
             }}
             onBlur={(e) => {
               e.currentTarget.style.borderColor = 'var(--surface-2)';
@@ -428,7 +428,7 @@ export default function ChatDetailPage() {
               className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center active:scale-90 transition-all"
               style={{
                 background: 'var(--brand)',
-                boxShadow: '0 0 14px rgba(201,168,76,0.55)',
+                boxShadow: '0 0 14px rgba(255,26,26,0.55)',
               }}
             >
               <svg viewBox="0 0 24 24" fill="#0d0d1a" className="w-4 h-4">
@@ -675,7 +675,7 @@ function DmSettings({ conv, onClose }: { conv: Conversation; onClose: () => void
             style={{
               background: 'var(--surface-2)',
               border: '2px solid var(--surface-2)',
-              boxShadow: '0 0 0 3px rgba(201,168,76,0.15)',
+              boxShadow: '0 0 0 3px rgba(255,26,26,0.15)',
             }}
           >
             {conv.avatar}
@@ -691,8 +691,8 @@ function DmSettings({ conv, onClose }: { conv: Conversation; onClose: () => void
           <button
             className="mt-4 px-5 py-1.5 rounded-full text-xs font-semibold active:scale-95 transition-transform"
             style={{
-              background: 'rgba(201,168,76,0.1)',
-              border: '1px solid rgba(201,168,76,0.3)',
+              background: 'rgba(255,26,26,0.1)',
+              border: '1px solid rgba(255,26,26,0.3)',
               color: 'var(--brand)',
             }}
           >
@@ -754,7 +754,7 @@ function GroupSettings({ conv, onClose }: { conv: Conversation; onClose: () => v
               style={{
                 background: 'var(--surface-2)',
                 border: '2px solid var(--surface-2)',
-                boxShadow: '0 0 0 3px rgba(201,168,76,0.15)',
+                boxShadow: '0 0 0 3px rgba(255,26,26,0.15)',
               }}
             >
               {conv.avatar}
@@ -766,7 +766,7 @@ function GroupSettings({ conv, onClose }: { conv: Conversation; onClose: () => v
                 border: '2px solid var(--background)',
               }}
             >
-              <svg viewBox="0 0 24 24" fill="none" stroke="#0d0d1a" strokeWidth={2.5}
+              <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth={2.5}
                 className="w-3.5 h-3.5"
               >
                 <path strokeLinecap="round" strokeLinejoin="round"
@@ -786,7 +786,7 @@ function GroupSettings({ conv, onClose }: { conv: Conversation; onClose: () => v
                 className="flex-1 text-center text-base font-bold rounded-xl px-3 py-1.5 outline-none"
                 style={{
                   background: 'var(--surface)',
-                  border: '1px solid rgba(201,168,76,0.4)',
+                  border: '1px solid rgba(255,26,26,0.4)',
                   color: 'var(--foreground)',
                 }}
                 onBlur={() => setEditing(false)}
@@ -825,7 +825,7 @@ function GroupSettings({ conv, onClose }: { conv: Conversation; onClose: () => v
         >
           <div
             className="w-10 h-10 rounded-xl flex items-center justify-center text-xl flex-shrink-0"
-            style={{ background: 'rgba(201,168,76,0.1)', border: '1px solid rgba(201,168,76,0.2)' }}
+            style={{ background: 'rgba(255,26,26,0.1)', border: '1px solid rgba(255,26,26,0.2)' }}
           >
             🎸
           </div>

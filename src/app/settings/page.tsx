@@ -19,21 +19,12 @@ type PrivacyScope = 'all' | 'followers';
 
 // ── カスタマイズ型定義 ───────────────────────────────────────────
 
-type CardBg =
-  | 'pastel_pink' | 'pastel_blue' | 'pastel_green'
-  | 'pastel_yellow' | 'pastel_purple' | 'pastel_peach'
-  | 'pattern_dot' | 'pattern_stripe' | 'pattern_check'
-  | 'pattern_wave' | 'pattern_triangle'
-  | 'grad_sunset' | 'grad_ocean' | 'grad_lavender';
-
-type PostFont = 'standard' | 'rounded' | 'mincho' | 'bold';
-
 type BubbleColor = 'auto' | 'pink' | 'lightblue' | 'purple' | 'orange' | 'green' | 'gold';
 
 type Lang = 'ja' | 'en' | 'ko' | 'zh';
 
 interface BubbleStyle { bgColor: string; borderColor: string; borderWidth: number; }
-const DEFAULT_BUBBLE_STYLE: BubbleStyle = { bgColor: "#0d0d1a", borderColor: "#C9A84C", borderWidth: 1 };
+const DEFAULT_BUBBLE_STYLE: BubbleStyle = { bgColor: "#0d0d1a", borderColor: "#FF1A1A", borderWidth: 1 };
 
 // ── 言語定義 ─────────────────────────────────────────────────────
 
@@ -45,48 +36,6 @@ const LANGS: { code: Lang; label: string; flag: string }[] = [
 ];
 
 // ── カスタマイズ定数 ─────────────────────────────────────────────
-
-const CARD_BG_LABELS: Record<CardBg, string> = {
-  pastel_pink: 'パステルピンク', pastel_blue: 'パステルブルー', pastel_green: 'パステルグリーン',
-  pastel_yellow: 'パステルイエロー', pastel_purple: 'パステルパープル', pastel_peach: 'パステルピーチ',
-  pattern_dot: 'ドット', pattern_stripe: 'ストライプ', pattern_check: 'チェック',
-  pattern_wave: 'ウェーブ', pattern_triangle: 'トライアングル',
-  grad_sunset: 'サンセット', grad_ocean: 'オーシャン', grad_lavender: 'ラベンダー',
-};
-
-const PASTEL_COLORS: { key: CardBg; color: string; label: string }[] = [
-  { key: 'pastel_pink',   color: '#FFD6E0', label: 'ピンク'  },
-  { key: 'pastel_blue',   color: '#D0E8FF', label: 'ブルー'  },
-  { key: 'pastel_green',  color: '#D4F5D4', label: 'グリーン' },
-  { key: 'pastel_yellow', color: '#FFF5C2', label: 'イエロー' },
-  { key: 'pastel_purple', color: '#E8D5FF', label: 'パープル' },
-  { key: 'pastel_peach',  color: '#FFE5CC', label: 'ピーチ'  },
-];
-
-const PATTERNS: { key: CardBg; style: React.CSSProperties; label: string }[] = [
-  { key: 'pattern_dot',      label: 'ドット',         style: { backgroundColor: '#F9FAFB', backgroundImage: 'radial-gradient(#CBD5E1 1.5px, transparent 1.5px)', backgroundSize: '8px 8px' } },
-  { key: 'pattern_stripe',   label: 'ストライプ',     style: { background: 'repeating-linear-gradient(45deg, #f8fafc, #f8fafc 4px, #e2e8f0 4px, #e2e8f0 8px)' } },
-  { key: 'pattern_check',    label: 'チェック',       style: { backgroundColor: '#fff', backgroundImage: 'linear-gradient(45deg,#e5e7eb 25%,transparent 25%),linear-gradient(-45deg,#e5e7eb 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#e5e7eb 75%),linear-gradient(-45deg,transparent 75%,#e5e7eb 75%)', backgroundSize: '8px 8px', backgroundPosition: '0 0,0 4px,4px -4px,-4px 0' } },
-  { key: 'pattern_wave',     label: 'ウェーブ',       style: { backgroundColor: '#EFF6FF', backgroundImage: 'repeating-linear-gradient(0deg,rgba(147,197,253,0.5) 0,rgba(147,197,253,0.5) 2px,transparent 2px,transparent 10px)' } },
-  { key: 'pattern_triangle', label: 'トライアングル', style: { backgroundColor: '#FFF0F5', backgroundImage: 'linear-gradient(120deg,rgba(255,150,180,0.3) 33%,transparent 33%),linear-gradient(240deg,rgba(255,150,180,0.3) 33%,transparent 33%),linear-gradient(0deg,rgba(255,150,180,0.3) 33%,transparent 33%)', backgroundSize: '12px 10px' } },
-];
-
-const GRADIENTS: { key: CardBg; style: React.CSSProperties; label: string }[] = [
-  { key: 'grad_sunset',   label: 'サンセット', style: { background: 'linear-gradient(135deg,#FFB347,#FF6B6B)' } },
-  { key: 'grad_ocean',    label: 'オーシャン', style: { background: 'linear-gradient(135deg,#7EC8E3,#0057B8)' } },
-  { key: 'grad_lavender', label: 'ラベンダー', style: { background: 'linear-gradient(135deg,#E8D5FF,#B39DDB)' } },
-];
-
-const FONT_LABELS: Record<PostFont, string> = {
-  standard: '標準', rounded: '丸ゴシック', mincho: '明朝', bold: '太字',
-};
-
-const FONTS: { key: PostFont; label: string; fontStyle: React.CSSProperties }[] = [
-  { key: 'standard', label: '標準',       fontStyle: { fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' } },
-  { key: 'rounded',  label: '丸ゴシック', fontStyle: { fontFamily: "'M PLUS Rounded 1c','Rounded M+ 1c','Varela Round',sans-serif" } },
-  { key: 'mincho',   label: '明朝',       fontStyle: { fontFamily: "'Hiragino Mincho Pro','Yu Mincho','Noto Serif JP',Georgia,serif" } },
-  { key: 'bold',     label: '太字',       fontStyle: { fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif', fontWeight: 800 } },
-];
 
 const BUBBLE_COLOR_LABELS: Record<BubbleColor, string> = {
   auto: '時間帯自動', pink: 'ピンク', lightblue: '水色', purple: 'パープル',
@@ -172,7 +121,7 @@ function SettingRow({
     >
       <div style={{
         width: 36, height: 36, borderRadius: 10,
-        background: 'rgba(201,168,76,0.1)',
+        background: 'rgba(255,26,26,0.1)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 18, flexShrink: 0,
       }}>
@@ -223,7 +172,7 @@ function EditableRow({
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{
           width: 36, height: 36, borderRadius: 10,
-          background: 'rgba(201,168,76,0.1)',
+          background: 'rgba(255,26,26,0.1)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 18, flexShrink: 0,
         }}>
@@ -323,7 +272,7 @@ function AccordionRow({
       }}
     >
       <div style={{
-        width: 36, height: 36, borderRadius: 10, background: 'rgba(201,168,76,0.1)',
+        width: 36, height: 36, borderRadius: 10, background: 'rgba(255,26,26,0.1)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 18, flexShrink: 0,
       }}>
@@ -366,11 +315,11 @@ export default function SettingsPage() {
   const [profileScope, setProfileScope] = useState<PrivacyScope>('all');
 
   // カスタマイズ
-  const [cardBg,      setCardBgState]      = useState<CardBg>('pastel_pink');
-  const [postFont,    setPostFontState]    = useState<PostFont>('standard');
-  const [bubbleColor, setBubbleColorState] = useState<BubbleColor>('auto');
+  const [cardBg,       setCardBgState]       = useState<string>('');
+  const [hashtagColor, setHashtagColorState] = useState<string>('');
+  const [bubbleColor,  setBubbleColorState]  = useState<BubbleColor>('auto');
   const [expandCardBg,     setExpandCardBg]     = useState(false);
-  const [expandFont,       setExpandFont]       = useState(false);
+  const [expandHashtag,    setExpandHashtag]    = useState(false);
   const [expandBubble,     setExpandBubble]     = useState(false);
   const [expandBubbleStyle, setExpandBubbleStyle] = useState(false);
   const [bubbleStyle,      setBubbleStyleState] = useState<BubbleStyle>(DEFAULT_BUBBLE_STYLE);
@@ -379,12 +328,12 @@ export default function SettingsPage() {
   const [lang, setLangState] = useState<Lang>('ja');
 
   useEffect(() => {
-    const bg  = localStorage.getItem('sync_card_bg')      as CardBg | null;
-    const fnt = localStorage.getItem('sync_font')         as PostFont | null;
+    const bg  = localStorage.getItem('sync_card_bg');
+    const htc = localStorage.getItem('sync_hashtag_color');
     const bbl = localStorage.getItem('sync_bubble_color') as BubbleColor | null;
     const lng = localStorage.getItem('sync_lang')         as Lang | null;
-    if (bg)  setCardBgState(bg);
-    if (fnt) setPostFontState(fnt);
+    if (bg  !== null) setCardBgState(bg);
+    if (htc !== null) setHashtagColorState(htc);
     if (bbl) setBubbleColorState(bbl);
     if (lng) setLangState(lng);
     try {
@@ -393,8 +342,8 @@ export default function SettingsPage() {
     } catch { /* ignore */ }
   }, []);
 
-  function setCardBg(v: CardBg)          { setCardBgState(v);      localStorage.setItem('sync_card_bg', v); }
-  function setPostFont(v: PostFont)       { setPostFontState(v);    localStorage.setItem('sync_font', v); }
+  function setCardBg(v: string)          { setCardBgState(v);        localStorage.setItem('sync_card_bg', v); }
+  function setHashtagColor(v: string)    { setHashtagColorState(v); if (v) localStorage.setItem('sync_hashtag_color', v); else localStorage.removeItem('sync_hashtag_color'); }
   function setBubbleColor(v: BubbleColor) { setBubbleColorState(v); localStorage.setItem('sync_bubble_color', v); }
   function updateBubbleStyle(patch: Partial<BubbleStyle>) {
     setBubbleStyleState(prev => {
@@ -500,78 +449,147 @@ export default function SettingsPage() {
           <div style={{ borderBottom: expandCardBg ? 'none' : '1px solid var(--surface-2)' }}>
             <AccordionRow
               icon="🖼️" label="投稿カードの背景"
-              sub={CARD_BG_LABELS[cardBg]}
+              sub={cardBg || 'なし'}
               expanded={expandCardBg}
               onToggle={() => setExpandCardBg(!expandCardBg)}
               borderBottom={!expandCardBg}
             />
             {expandCardBg && (
               <div style={{ ...expandPanelStyle, borderBottom: '1px solid var(--surface-2)' }}>
-                <p style={{ ...subLabelStyle, marginTop: 12 }}>単色</p>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  {PASTEL_COLORS.map(({ key, color, label }) => (
-                    <button key={key} onClick={() => setCardBg(key)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                      <div style={{ width: 36, height: 36, borderRadius: '50%', background: color, border: cardBg === key ? '3px solid #E63946' : '2px solid var(--surface-2)', boxSizing: 'border-box' }} />
-                      <span style={{ fontSize: 10, color: 'var(--muted)' }}>{label}</span>
-                    </button>
-                  ))}
+                {/* プレビュー */}
+                <div style={{
+                  marginTop: 12, marginBottom: 12,
+                  padding: '10px 14px', borderRadius: 12,
+                  background: cardBg || 'var(--surface-2)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  fontSize: 13, color: 'rgba(255,255,255,0.85)',
+                }}>
+                  今日のライブ最高だった 🎸
                 </div>
-                <p style={subLabelStyle}>模様</p>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  {PATTERNS.map(({ key, style, label }) => (
-                    <button key={key} onClick={() => setCardBg(key)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                      <div style={{ width: 36, height: 36, borderRadius: 8, border: cardBg === key ? '3px solid #E63946' : '2px solid var(--surface-2)', boxSizing: 'border-box', ...style }} />
-                      <span style={{ fontSize: 10, color: 'var(--muted)' }}>{label}</span>
-                    </button>
-                  ))}
+
+                {/* プリセット：透明 */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                  <button
+                    onClick={() => { setCardBg(''); localStorage.setItem('sync_card_bg', ''); }}
+                    style={{
+                      width: 30, height: 30, borderRadius: '50%',
+                      background: 'transparent',
+                      border: !cardBg ? '2px solid white' : '1.5px dashed rgba(255,255,255,0.3)',
+                      cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 11, color: 'rgba(255,255,255,0.4)',
+                    }}
+                  >✕</button>
+                  <span style={{ fontSize: 11, color: 'var(--muted)' }}>透明（デフォルト）</span>
                 </div>
-                <p style={subLabelStyle}>グラデーション</p>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  {GRADIENTS.map(({ key, style, label }) => (
-                    <button key={key} onClick={() => setCardBg(key)} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
-                      <div style={{ width: 36, height: 36, borderRadius: 8, border: cardBg === key ? '3px solid #E63946' : '2px solid var(--surface-2)', boxSizing: 'border-box', ...style }} />
-                      <span style={{ fontSize: 10, color: 'var(--muted)' }}>{label}</span>
-                    </button>
-                  ))}
+
+                {/* 色相バー */}
+                <div>
+                  <p style={{ ...subLabelStyle, marginBottom: 8 }}>色相</p>
+                  <input
+                    type="range"
+                    min={0}
+                    max={360}
+                    defaultValue={0}
+                    onChange={(e) => {
+                      const h = parseInt(e.target.value);
+                      const s = 0.4, l = 0.2;
+                      const a = s * Math.min(l, 1 - l);
+                      const f = (n: number) => {
+                        const k = (n + h / 30) % 12;
+                        const c = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+                        return Math.round(255 * c).toString(16).padStart(2, '0');
+                      };
+                      const hex = '#' + f(0) + f(8) + f(4);
+                      setCardBg(hex);
+                      localStorage.setItem('sync_card_bg', hex);
+                    }}
+                    style={{
+                      width: '100%', height: 12, borderRadius: 6,
+                      appearance: 'none', WebkitAppearance: 'none',
+                      background: 'linear-gradient(to right,#f00 0%,#ff0 17%,#0f0 33%,#0ff 50%,#00f 67%,#f0f 83%,#f00 100%)',
+                      cursor: 'pointer',
+                    }}
+                  />
                 </div>
               </div>
             )}
           </div>
 
-          {/* 投稿のフォント */}
-          <div style={{ borderBottom: expandFont ? 'none' : '1px solid var(--surface-2)' }}>
+          {/* ハッシュタグ枠色 */}
+          <div style={{ borderBottom: expandHashtag ? 'none' : '1px solid var(--surface-2)' }}>
             <AccordionRow
-              icon="✏️" label="投稿のフォント"
-              sub={FONT_LABELS[postFont]}
-              expanded={expandFont}
-              onToggle={() => setExpandFont(!expandFont)}
-              borderBottom={!expandFont}
+              icon="#️⃣" label="ハッシュタグ枠色"
+              sub={hashtagColor || '虹色（デフォルト）'}
+              expanded={expandHashtag}
+              onToggle={() => setExpandHashtag(!expandHashtag)}
+              borderBottom={!expandHashtag}
             />
-            {expandFont && (
+            {expandHashtag && (
               <div style={{ ...expandPanelStyle, borderBottom: '1px solid var(--surface-2)' }}>
-                {FONTS.map(({ key, label, fontStyle }) => (
+                {/* プレビュー */}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12, marginBottom: 14 }}>
+                  {['#engineer', '#music', '#live'].map(tag => (
+                    <span
+                      key={tag}
+                      style={hashtagColor ? {
+                        padding: '2px 10px', borderRadius: 9999,
+                        color: '#ffffff', display: 'inline-block',
+                        fontSize: 12, border: `1.5px solid ${hashtagColor}`,
+                        background: 'transparent',
+                      } : {
+                        padding: '2px 10px', borderRadius: 9999,
+                        color: '#ffffff', display: 'inline-block',
+                        fontSize: 12,
+                        background: 'linear-gradient(var(--background),var(--background)) padding-box, linear-gradient(to right,#7C6FE8,#D455A8,#E84040,#E8A020,#48C468,#2890D8,#7C6FE8) border-box',
+                        border: '1.5px solid transparent',
+                      }}
+                    >{tag}</span>
+                  ))}
+                </div>
+
+                {/* 虹色リセットボタン */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
                   <button
-                    key={key}
-                    onClick={() => setPostFont(key)}
+                    onClick={() => setHashtagColor('')}
                     style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      width: '100%', padding: '10px 12px', marginBottom: 6,
-                      background: postFont === key ? 'rgba(230,57,70,0.08)' : 'var(--surface-2)',
-                      border: postFont === key ? '1.5px solid #E63946' : '1.5px solid var(--surface-2)',
-                      borderRadius: 10, cursor: 'pointer', boxSizing: 'border-box',
+                      width: 30, height: 30, borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #7C6FE8, #D455A8, #E84040, #E8A020, #48C468, #2890D8)',
+                      border: !hashtagColor ? '2px solid white' : 'none',
+                      cursor: 'pointer', flexShrink: 0,
                     }}
-                  >
-                    <div style={{ textAlign: 'left' }}>
-                      <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', marginBottom: 2 }}>{label}</p>
-                      <p style={{ fontSize: 13, color: 'var(--foreground)', margin: 0, ...fontStyle }}>今日もいい日だった</p>
-                    </div>
-                    {postFont === key && (
-                      <svg viewBox="0 0 24 24" fill="none" stroke="#E63946" strokeWidth={2.5} style={{ width: 16, height: 16, flexShrink: 0 }}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                      </svg>
-                    )}
-                  </button>
-                ))}
+                  />
+                  <span style={{ fontSize: 11, color: 'var(--muted)' }}>虹色（デフォルト）</span>
+                </div>
+
+                {/* 色相バー */}
+                <div>
+                  <p style={{ ...subLabelStyle, marginBottom: 8 }}>色相</p>
+                  <input
+                    type="range"
+                    min={0}
+                    max={360}
+                    defaultValue={0}
+                    onChange={(e) => {
+                      const h = parseInt(e.target.value);
+                      const s = 0.85, l = 0.55;
+                      const a = s * Math.min(l, 1 - l);
+                      const f = (n: number) => {
+                        const k = (n + h / 30) % 12;
+                        const c = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+                        return Math.round(255 * c).toString(16).padStart(2, '0');
+                      };
+                      const hex = '#' + f(0) + f(8) + f(4);
+                      setHashtagColor(hex);
+                    }}
+                    style={{
+                      width: '100%', height: 12, borderRadius: 6,
+                      appearance: 'none', WebkitAppearance: 'none',
+                      background: 'linear-gradient(to right,#f00 0%,#ff0 17%,#0f0 33%,#0ff 50%,#00f 67%,#f0f 83%,#f00 100%)',
+                      cursor: 'pointer',
+                    }}
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -627,11 +645,18 @@ export default function SettingsPage() {
                   <div style={{
                     padding: '6px 16px', borderRadius: 20,
                     background: bubbleStyle.bgColor,
-                    border: `${bubbleStyle.borderWidth}px solid ${bubbleStyle.borderColor}`,
+                    border: bubbleStyle.borderColor === 'rainbow'
+                      ? `${bubbleStyle.borderWidth}px solid transparent`
+                      : bubbleStyle.borderColor === 'none'
+                        ? 'none'
+                        : `${bubbleStyle.borderWidth}px solid ${bubbleStyle.borderColor}`,
+                    borderImage: bubbleStyle.borderColor === 'rainbow'
+                      ? 'linear-gradient(to right,#7C6FE8,#D455A8,#E84040,#E8A020,#48C468,#2890D8) 1'
+                      : 'none',
                     fontSize: 13, color: '#fff',
                     boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.2)',
                   }}>
-                    🌟 プレビュー
+                    今日最高だった
                   </div>
                 </div>
                 {/* 背景色 */}
@@ -645,16 +670,71 @@ export default function SettingsPage() {
                   />
                   <span style={{ fontSize: 12, color: 'var(--muted)' }}>{bubbleStyle.bgColor}</span>
                 </div>
-                {/* ボーダー色 */}
-                <p style={subLabelStyle}>ボーダー色</p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <input
-                    type="color"
-                    value={bubbleStyle.borderColor.startsWith('#') ? bubbleStyle.borderColor : '#C9A84C'}
-                    onChange={e => updateBubbleStyle({ borderColor: e.target.value })}
-                    style={{ width: 40, height: 36, borderRadius: 8, border: '1px solid var(--surface-2)', cursor: 'pointer', padding: 2 }}
+                {/* Bubble枠色 */}
+                <p style={subLabelStyle}>Bubble 枠色</p>
+
+                {/* プリセット */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                  {/* 透明 */}
+                  <button
+                    onClick={() => updateBubbleStyle({ borderColor: 'none' })}
+                    style={{
+                      width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',
+                      background: 'transparent',
+                      border: bubbleStyle.borderColor === 'none'
+                        ? '2px solid white'
+                        : '1.5px dashed rgba(255,255,255,0.3)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 11, color: 'rgba(255,255,255,0.4)',
+                    }}
+                  >✕</button>
+                  {/* 虹色 */}
+                  <button
+                    onClick={() => updateBubbleStyle({ borderColor: 'rainbow' })}
+                    style={{
+                      width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',
+                      background: 'linear-gradient(135deg,#7C6FE8,#D455A8,#E84040,#E8A020,#48C468,#2890D8)',
+                      border: bubbleStyle.borderColor === 'rainbow' ? '2px solid white' : 'none',
+                    }}
                   />
-                  <span style={{ fontSize: 12, color: 'var(--muted)' }}>{bubbleStyle.borderColor}</span>
+                  {/* 白・黒 */}
+                  {(['#ffffff', '#000000'] as const).map(c => (
+                    <button
+                      key={c}
+                      onClick={() => updateBubbleStyle({ borderColor: c })}
+                      style={{
+                        width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',
+                        background: c,
+                        border: bubbleStyle.borderColor === c
+                          ? '2px solid rgba(255,255,255,0.8)'
+                          : c === '#ffffff' ? '1px solid rgba(255,255,255,0.2)' : 'none',
+                      }}
+                    />
+                  ))}
+                </div>
+
+                {/* 色相バー */}
+                <div style={{ width: '100%', marginBottom: 4 }}>
+                  <input
+                    type="range" min={0} max={360} defaultValue={0}
+                    onChange={(e) => {
+                      const h = parseInt(e.target.value);
+                      const s = 0.85, l = 0.55;
+                      const a = s * Math.min(l, 1 - l);
+                      const f = (n: number) => {
+                        const k = (n + h / 30) % 12;
+                        const c = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+                        return Math.round(255 * c).toString(16).padStart(2, '0');
+                      };
+                      updateBubbleStyle({ borderColor: '#' + f(0) + f(8) + f(4) });
+                    }}
+                    style={{
+                      width: '100%', height: 12, borderRadius: 6,
+                      appearance: 'none', WebkitAppearance: 'none',
+                      background: 'linear-gradient(to right,#f00 0%,#ff0 17%,#0f0 33%,#0ff 50%,#00f 67%,#f0f 83%,#f00 100%)',
+                      cursor: 'pointer',
+                    } as React.CSSProperties}
+                  />
                 </div>
                 {/* ボーダー太さ */}
                 <p style={subLabelStyle}>ボーダーの太さ：{bubbleStyle.borderWidth}px</p>
@@ -662,7 +742,7 @@ export default function SettingsPage() {
                   type="range" min={1} max={4} step={1}
                   value={bubbleStyle.borderWidth}
                   onChange={e => updateBubbleStyle({ borderWidth: Number(e.target.value) })}
-                  style={{ width: '100%', accentColor: '#C9A84C' }}
+                  style={{ width: '100%', accentColor: '#FF1A1A' }}
                 />
                 {/* リセット */}
                 <button
@@ -721,7 +801,7 @@ export default function SettingsPage() {
             >
               <div style={{
                 width: 36, height: 36, borderRadius: 10,
-                background: 'rgba(201,168,76,0.1)',
+                background: 'rgba(255,26,26,0.1)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 22, flexShrink: 0,
               }}>

@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect } from 'react';
 import type { Post } from '@/lib/mockData';
 
+const RAINBOW = 'linear-gradient(to right, #7C6FE8 0%, #D455A8 18%, #E84040 36%, #E8A020 52%, #48C468 68%, #2890D8 84%, #7C6FE8 100%)'
+
 // ── リアクション絵文字 ────────────────────────────────────────────
 const REACTION_DEFAULTS = ['❤️', '👍', '👏', '😂', '😭'];
 const REACTION_ALL = [
@@ -48,7 +50,7 @@ function CountdownTimer({ expiresAt }: { expiresAt: number }) {
     }}>
       {([{ value: d, label: 'd' }, { value: h, label: 'h' }, { value: m, label: 'm' }, { value: s, label: 's' }] as const).map(({ value, label }, i) => (
         <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          {i > 0 && <span style={{ color: '#C9A84C', fontWeight: 'bold' }}>:</span>}
+          {i > 0 && <span style={{ color: '#FF1A1A', fontWeight: 'bold' }}>:</span>}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <span style={{
               color: '#fff',
@@ -71,12 +73,16 @@ function CountdownTimer({ expiresAt }: { expiresAt: number }) {
 interface FloatEmoji { id: number; emoji: string; x: number; delay: number }
 
 interface PostCardProps {
-  post:        Post;
-  onReply?:    (post: Post) => void;
-  onUserClick?: () => void;
+  post:                Post;
+  onReply?:            (post: Post) => void;
+  onUserClick?:        () => void;
+  onHashtagClick?:     (tag: string) => void;
+  cardColor?:          string;
+  isReplyLocked?:      boolean;
+  hashtagBorderColor?: string;
 }
 
-export default function PostCard({ post, onReply, onUserClick }: PostCardProps) {
+export default function PostCard({ post, onReply, onUserClick, onHashtagClick, cardColor, isReplyLocked, hashtagBorderColor }: PostCardProps) {
   const [reactedEmoji, setReactedEmoji] = useState<string | null>(null);
   const [showPicker,   setShowPicker]   = useState(false);
   const [expandAll,    setExpandAll]    = useState(false);
@@ -98,9 +104,21 @@ export default function PostCard({ post, onReply, onUserClick }: PostCardProps) 
     setTimeout(() => setFloatEmojis((prev) => prev.filter((e) => !ids.has(e.id))), 1200);
   }
 
+  const hasBg     = cardColor !== undefined && cardColor !== '';
+  const bgColor   = hasBg ? cardColor : 'var(--surface)';
+  const bdColor   = hasBg && cardColor !== 'transparent' ? 'rgba(255,255,255,0.15)' : 'var(--surface-2)';
+
   return (
-    <article className="border-b" style={{ borderColor: 'var(--surface-2)' }}>
-      <div className="px-4 py-4">
+    <article
+      style={{
+        margin:       '6px 12px',
+        borderRadius: 20,
+        border:       `2px solid ${bdColor}`,
+        background:   bgColor,
+        overflow:     'hidden',
+      }}
+    >
+      <div className="px-5 py-4">
 
         {/* ヘッダー: アバター + ユーザー情報 + 時刻 */}
         <div className="flex items-start gap-3 mb-3">
@@ -117,10 +135,10 @@ export default function PostCard({ post, onReply, onUserClick }: PostCardProps) 
                 className="flex items-baseline gap-1.5 min-w-0 cursor-pointer active:opacity-70"
                 onClick={onUserClick}
               >
-                <span className="font-semibold text-sm truncate" style={{ color: 'var(--foreground)' }}>
+                <span className="font-semibold text-sm" style={{ color: 'var(--foreground)' }}>
                   {post.name}
                 </span>
-                <span className="text-xs truncate" style={{ color: 'var(--muted)' }}>
+                <span className="text-xs" style={{ color: 'var(--muted)' }}>
                   {post.handle}
                 </span>
               </div>
@@ -147,12 +165,23 @@ export default function PostCard({ post, onReply, onUserClick }: PostCardProps) 
           {post.hashtags.map((tag) => (
             <span
               key={tag}
-              className="text-xs px-2.5 py-0.5 rounded-full cursor-pointer transition-colors duration-150"
-              style={{
-                background: 'rgba(201,168,76,0.1)',
-                color: 'var(--brand)',
-                border: '1px solid rgba(201,168,76,0.25)',
+              className="text-xs cursor-pointer transition-opacity duration-150 active:opacity-60"
+              style={hashtagBorderColor ? {
+                padding: '2px 10px',
+                borderRadius: 9999,
+                color: '#ffffff',
+                background: 'transparent',
+                border: `1.5px solid ${hashtagBorderColor}`,
+                display: 'inline-block',
+              } : {
+                padding: '2px 10px',
+                borderRadius: 9999,
+                color: '#ffffff',
+                background: `linear-gradient(var(--background), var(--background)) padding-box, ${RAINBOW} border-box`,
+                border: '1.5px solid transparent',
+                display: 'inline-block',
               }}
+              onClick={(e) => { e.stopPropagation(); onHashtagClick?.(tag); }}
             >
               {tag}
             </span>
@@ -165,8 +194,11 @@ export default function PostCard({ post, onReply, onUserClick }: PostCardProps) 
 
             {/* Reply ボタン */}
             <button
-              className="flex items-center gap-1.5 transition-colors duration-150 active:opacity-60"
-              style={{ color: 'var(--muted)' }}
+              className="flex items-center transition-colors duration-150"
+              style={{
+                color: isReplyLocked ? 'rgba(136,136,170,0.35)' : 'var(--muted)',
+                cursor: isReplyLocked ? 'default' : 'pointer',
+              }}
               onClick={() => onReply?.(post)}
             >
               <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.6} stroke="currentColor" className="w-4 h-4">
@@ -174,7 +206,6 @@ export default function PostCard({ post, onReply, onUserClick }: PostCardProps) 
                   d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.586 1.641a4.483 4.483 0 01-.923 1.785A5.969 5.969 0 006 21c1.282 0 2.47-.402 3.445-1.087.81.22 1.668.337 2.555.337z"
                 />
               </svg>
-              <span className="text-xs">reply</span>
             </button>
 
             {/* リアクションボタン */}

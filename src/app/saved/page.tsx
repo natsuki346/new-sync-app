@@ -74,7 +74,7 @@ function SavedCard({ post }: { post: Post }) {
             <span
               key={tag}
               className="text-xs px-2 py-0.5 rounded-full"
-              style={{ background: 'rgba(201,168,76,0.08)', border: '1px solid rgba(201,168,76,0.2)', color: 'var(--brand)' }}
+              style={{ background: 'rgba(255,26,26,0.08)', border: '1px solid rgba(255,26,26,0.2)', color: 'var(--brand)' }}
             >
               {tag}
             </span>

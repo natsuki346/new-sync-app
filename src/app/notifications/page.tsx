@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
+const RAINBOW = 'linear-gradient(to right, #7C6FE8 0%, #D455A8 18%, #E84040 36%, #E8A020 52%, #48C468 68%, #2890D8 84%, #7C6FE8 100%)'
+
 // ── 型定義 ────────────────────────────────────────────────────────
 
 type NotifType = 'follow' | 'bubble' | 'dm' | 'reaction' | 'comment' | 'event_reminder';
@@ -201,7 +203,7 @@ export default function NotificationsPage() {
             className="shrink-0 text-xs px-3.5 py-1.5 rounded-full font-semibold transition-all duration-150 active:scale-95"
             style={
               filter === key
-                ? { background: '#E63946', color: '#fff', border: '1px solid #E63946' }
+                ? { background: RAINBOW, color: '#fff', border: 'none' }
                 : { background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--surface-2)' }
             }
           >
@@ -278,7 +280,7 @@ export default function NotificationsPage() {
                       <button
                         onClick={(e) => handleAcceptFollow(notif, e)}
                         className="flex items-center justify-center w-8 h-8 rounded-full active:scale-95 transition-transform"
-                        style={{ background: 'var(--brand)', color: '#0d0d1a' }}
+                        style={{ background: '#E84040', color: '#ffffff' }}
                       >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4">
                           <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
@@ -336,7 +338,7 @@ export default function NotificationsPage() {
       {toast && (
         <div style={{
           position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)',
-          background: 'rgba(20,20,42,0.95)', border: '1px solid rgba(201,168,76,0.4)',
+          background: 'rgba(20,20,42,0.95)', border: '1px solid rgba(255,26,26,0.4)',
           color: '#fff', fontSize: 13, fontWeight: 600,
           padding: '10px 20px', borderRadius: 24, zIndex: 300,
           boxShadow: '0 4px 20px rgba(0,0,0,0.4)',

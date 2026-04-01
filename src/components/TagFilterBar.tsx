@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { RAINBOW } from "@/lib/rainbow";
 import { createPortal } from "react-dom";
 import { MY_PASSION } from "@/components/PassionGraph";
 
@@ -128,9 +129,9 @@ function TagSelectModal({
                   borderRadius: 12,
                   fontSize: 12, fontWeight: 600,
                   textAlign: "center",
-                  border:      sel ? "1.5px solid #E63946" : "1px solid rgb(var(--border-rgb, 50 50 80))",
-                  background:  sel ? "rgba(230,57,70,0.1)" : "transparent",
-                  color:       sel ? "#E63946" : "rgb(var(--muted-rgb, 136 136 170))",
+                  border:      sel ? "1.5px solid #7C6FE8" : "1px solid rgb(var(--border-rgb, 50 50 80))",
+                  background:  sel ? "rgba(124,111,232,0.12)" : "transparent",
+                  color:       sel ? "#7C6FE8" : "rgb(var(--muted-rgb, 136 136 170))",
                   cursor: "pointer", transition: "all 0.15s",
                   position: "relative",
                 }}
@@ -165,8 +166,8 @@ function TagSelectModal({
             width: "100%", padding: "14px",
             borderRadius: 14, fontWeight: 700, fontSize: 15,
             color: "#fff", border: "none", cursor: "pointer",
-            background: "linear-gradient(135deg, #E63946, #C41A27)",
-            boxShadow: "0 4px 16px rgba(230,57,70,0.35)",
+            background: RAINBOW,
+            boxShadow: "0 4px 16px rgba(124,111,232,0.35)",
           }}
         >
           {draft.length === 0 ? "Done" : `Done (${draft.length} selected)`}
@@ -203,7 +204,7 @@ export function TagFilterBar({
 
   const isAll = selectedTags.length === 0;
 
-  const activeStyle: React.CSSProperties   = { background: "#E63946", color: "#fff",  border: "1px solid #E63946" };
+  const activeStyle: React.CSSProperties   = { background: RAINBOW, color: "#fff", border: "none" };
   const inactiveStyle: React.CSSProperties = variant === "red"
     ? { background: "rgba(230,57,70,0.06)", color: "#E63946", border: "1px solid rgba(230,57,70,0.2)" }
     : { background: "transparent", color: "rgb(var(--muted-rgb, 136 136 170))", border: "1px solid rgb(var(--border-rgb, 50 50 80))" };
@@ -243,23 +244,26 @@ export function TagFilterBar({
           <>
             <button
               onClick={leadingItem.onClick}
-              style={{
+              style={leadingItem.active ? {
                 flexShrink: 0,
-                fontSize: variant === "red" ? 11 : 12,
-                fontWeight: 700,
+                fontSize: 13,
+                fontWeight: 500,
                 borderRadius: 9999,
-                padding: variant === "red" ? "4px 12px" : "6px 14px",
+                padding: "5px 14px",
                 cursor: "pointer",
-                border: leadingItem.active
-                  ? "1.5px solid rgb(var(--fore-rgb, 255 255 255))"
-                  : "1.5px solid rgba(var(--fore-rgb, 255 255 255), 0.25)",
-                background: leadingItem.active
-                  ? "rgb(var(--fore-rgb, 255 255 255))"
-                  : "transparent",
-                color: leadingItem.active
-                  ? "rgb(var(--bg-rgb, 13 13 26))"
-                  : "rgba(var(--fore-rgb, 255 255 255), 0.55)",
-                transition: "all 0.2s",
+                border: "none",
+                background: RAINBOW,
+                color: "#ffffff",
+              } : {
+                flexShrink: 0,
+                fontSize: 13,
+                fontWeight: 500,
+                borderRadius: 9999,
+                padding: "5px 14px",
+                cursor: "pointer",
+                background: "transparent",
+                color: "var(--muted)",
+                border: "1px solid var(--muted)",
               }}
             >
               {leadingItem.label}

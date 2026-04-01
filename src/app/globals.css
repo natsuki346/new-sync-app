@@ -1,19 +1,19 @@
 @import "tailwindcss";
 
 :root {
-  --brand: #C9A84C;
-  --background: #0d0d1a;
+  --brand: #7C6FE8;
+  --background: #111111;
   --foreground: #ffffff;
-  --surface: #14142a;
-  --surface-2: #1e1e3a;
+  --surface: #1a1a1a;
+  --surface-2: #242424;
   --muted: #8888aa;
   --desktop-bg: #05050e;
 
   /* ── Highlight/Search page compat (space-sep RGB channels) ── */
-  --bg-rgb:      13  13  26;   /* #0d0d1a */
-  --surface-rgb: 20  20  42;   /* #14142a */
-  --card-rgb:    20  20  42;
-  --border-rgb:  50  50  80;   /* dark border */
+  --bg-rgb:      17  17  17;   /* #111111 */
+  --surface-rgb: 26  26  26;   /* #1a1a1a */
+  --card-rgb:    26  26  26;
+  --border-rgb:  50  50  50;   /* dark border */
   --fore-rgb:   255 255 255;
   --muted-rgb:  136 136 170;   /* #8888aa */
   --accent-rgb: 230  57  70;   /* #E63946 red — matches sync-app exact look */
@@ -39,12 +39,13 @@
   --color-pink:   rgb(var(--pink-rgb));
 }
 
-html,
-body {
+html {
   height: 100%;
 }
 
 body {
+  height: 100dvh;
+  overflow: hidden;
   background: var(--desktop-bg);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
@@ -125,6 +126,15 @@ body {
 @keyframes splashShimmer {
   0%   { transform: translateX(-120%); }
   100% { transform: translateX(220%); }
+}
+
+/* インスタライブ型リアクション浮き上がりアニメーション */
+@keyframes floatUp {
+  0%   { transform: translateY(0px) translateX(0px);    opacity: 0; }
+  5%   { opacity: 1; }
+  50%  { transform: translateY(-40vh) translateX(10px); opacity: 1; }
+  85%  { transform: translateY(-70vh) translateX(-6px); opacity: 0.4; }
+  100% { transform: translateY(-78vh) translateX(0px);  opacity: 0; }
 }
 
 /* Bottom sheet slide-up animation */

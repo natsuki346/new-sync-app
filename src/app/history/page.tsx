@@ -88,7 +88,7 @@ const STATUS_LABEL: Record<ApplicationStatus, string> = {
 };
 
 const STATUS_STYLE: Record<ApplicationStatus, { bg: string; color: string }> = {
-  applied:   { bg: 'rgba(201,168,76,0.15)',  color: 'var(--brand)' },
+  applied:   { bg: 'rgba(255,26,26,0.15)',  color: 'var(--brand)' },
   cancelled: { bg: 'var(--surface-2)',        color: 'var(--muted)' },
   free:      { bg: 'rgba(59,130,246,0.15)',  color: '#60a5fa' },
   past:      { bg: 'var(--surface-2)',        color: 'var(--muted)' },
@@ -128,7 +128,7 @@ function calcCountdown(eventTs: number, now: number): CountdownResult {
 
 function CountdownBoxes({ cd }: { cd: CountdownResult }) {
   const boxBg    = cd.urgent ? 'var(--brand)' : 'var(--surface)';
-  const labelCol = cd.urgent ? 'rgba(201,168,76,0.7)' : 'var(--muted)';
+  const labelCol = cd.urgent ? 'rgba(255,26,26,0.7)' : 'var(--muted)';
 
   function Box({ value, label }: { value: number; label: string }) {
     return (
@@ -336,9 +336,9 @@ function HistoryCard({
       className="rounded-2xl mb-3 overflow-hidden"
       style={{
         background: 'var(--surface)',
-        border: `1px solid ${cd.today ? 'rgba(201,168,76,0.4)' : 'var(--surface-2)'}`,
+        border: `1px solid ${cd.today ? 'rgba(255,26,26,0.4)' : 'var(--surface-2)'}`,
         opacity: isCancelled ? 0.6 : 1,
-        boxShadow: cd.today ? '0 0 0 2px rgba(201,168,76,0.15)' : 'none',
+        boxShadow: cd.today ? '0 0 0 2px rgba(255,26,26,0.15)' : 'none',
       }}
     >
       {/* カードヘッダー */}
@@ -368,7 +368,7 @@ function HistoryCard({
               className="flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold"
               style={{
                 border: `1.5px solid ${hasReminder ? 'var(--brand)' : 'var(--surface-2)'}`,
-                background: hasReminder ? 'rgba(201,168,76,0.1)' : 'transparent',
+                background: hasReminder ? 'rgba(255,26,26,0.1)' : 'transparent',
                 color: hasReminder ? 'var(--brand)' : 'var(--muted)',
               }}
             >
@@ -404,7 +404,7 @@ function HistoryCard({
             <span
               key={tag}
               className="text-[10px] px-2 py-0.5 rounded-full font-semibold"
-              style={{ background: 'rgba(201,168,76,0.08)', color: 'var(--brand)', border: '1px solid rgba(201,168,76,0.2)' }}
+              style={{ background: 'rgba(255,26,26,0.08)', color: 'var(--brand)', border: '1px solid rgba(255,26,26,0.2)' }}
             >
               {tag}
             </span>

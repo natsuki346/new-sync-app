@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { INFO_EVENTS, ORGANIZERS, HASHTAG_DATA, USER_TAGS, type HashtagPost } from "@/lib/mockData";
+import { useRouter } from "next/navigation";
+import SyncLogo from "@/components/SyncLogo";
+import { INFO_EVENTS, ORGANIZERS, HASHTAG_DATA, USER_TAGS, getTagEngagement, type HashtagPost } from "@/lib/mockData";
 import { TagFilterBar } from "@/components/TagFilterBar";
+import { RAINBOW } from "@/lib/rainbow";
 
 // ── フィルター用ハッシュタグ ──────────────────────────────────────
 
@@ -121,6 +124,10 @@ const EVENT_COLORS: Record<string, [string, string, string]> = {
   e5: ["#4A0D7A", "#200540", "#0A0220"],
 };
 
+// ── デフォルトフォロー・エンゲージメント ──────────────────────────
+
+const DEFAULT_FOLLOWED_TAGS = ['jprock', 'live', 'music', 'photo', 'design', 'night', 'coffee'];
+
 // ── 検索履歴ユーティリティ ──────────────────────────────────────
 
 const HISTORY_KEY = "sync_search_history";
@@ -136,6 +143,7 @@ function saveHistory(h: string[]) {
 // ── メインコンポーネント ──────────────────────────────────────────
 
 export default function SearchPage() {
+  const router = useRouter();
   const [followedOrgIds, setFollowedOrgIds] = useState<string[]>([]);
   const [isFollowing,    setIsFollowing]    = useState(false);
   const [selectedTags,   setSelectedTags]   = useState<string[]>([]);
@@ -143,8 +151,10 @@ export default function SearchPage() {
   const [query,          setQuery]          = useState("");
   const [history,        setHistory]        = useState<string[]>([]);
   const [selectedTag,    setSelectedTag]    = useState<string | null>(null);
+  const [fromUrlTag,     setFromUrlTag]     = useState<string | null>(null);
   const [followedTags,   setFollowedTags]   = useState<Set<string>>(new Set());
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef              = useRef<HTMLInputElement>(null);
+  const followedTagsReadyRef  = useRef(false);
 
   useEffect(() => {
     const refresh = () => {
@@ -157,6 +167,40 @@ export default function SearchPage() {
   }, []);
 
   useEffect(() => { setHistory(loadHistory()); }, []);
+
+  // フォロー済みタグ初期化 + エンゲージメントモックデータをシード
+  useEffect(() => {
+    // フォロー済みタグをlocalStorageから読み込む（なければデフォルト）
+    const stored = localStorage.getItem('sync_followed_tags');
+    if (stored) {
+      try {
+        const arr = JSON.parse(stored) as string[];
+        setFollowedTags(new Set(arr.map(t => t.startsWith('#') ? t : `#${t}`)));
+      } catch {
+        setFollowedTags(new Set(DEFAULT_FOLLOWED_TAGS.map(t => `#${t}`)));
+      }
+    } else {
+      setFollowedTags(new Set(DEFAULT_FOLLOWED_TAGS.map(t => `#${t}`)));
+      localStorage.setItem('sync_followed_tags', JSON.stringify(DEFAULT_FOLLOWED_TAGS));
+    }
+    followedTagsReadyRef.current = true;
+  }, []);
+
+  // フォロー変更をlocalStorageに永続化（初期化後のみ）
+  useEffect(() => {
+    if (!followedTagsReadyRef.current) return;
+    const arr = Array.from(followedTags).map(t => t.replace('#', ''));
+    localStorage.setItem('sync_followed_tags', JSON.stringify(arr));
+  }, [followedTags]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tag = params.get('tag');
+    if (tag) {
+      setSelectedTag(`#${tag}`);
+      setFromUrlTag(`#${tag}`);
+    }
+  }, []);
 
   const followedEventIds = ORGANIZERS
     .filter((o) => followedOrgIds.includes(o.id))
@@ -214,13 +258,15 @@ export default function SearchPage() {
     .map(([tag]) => tag);
 
   if (selectedTag) {
+    const isFromUrl = selectedTag === fromUrlTag;
     return (
       <div className="flex flex-col flex-1 min-h-0">
         <TagResultView
           tag={selectedTag}
           followedTags={followedTags}
           setFollowedTags={setFollowedTags}
-          onBack={() => setSelectedTag(null)}
+          onBack={() => router.back()}
+          hideFollow={isFromUrl}
           onClose={cancelSearch}
           onTagSelect={selectTag}
         />
@@ -242,10 +288,7 @@ export default function SearchPage() {
           transition: "max-height 0.22s cubic-bezier(0.32,0.72,0,1), opacity 0.18s",
         }}>
           <div className="flex items-center justify-between px-4 py-3">
-            <span className="text-xl font-black tracking-tight">
-              <span className="text-accent">S</span>
-              <span className="text-fore">YNC</span>
-            </span>
+            <SyncLogo width={120} />
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-dot-pulse" />
               <span className="text-xs text-muted">Discover</span>
@@ -509,8 +552,8 @@ function EventListView({
               <button
                 className="w-full py-3 rounded-xl font-bold text-sm text-white"
                 style={{
-                  background: "linear-gradient(135deg, #E63946, #C0000F)",
-                  boxShadow: "0 4px 14px rgba(230,57,70,0.4)",
+                  background: RAINBOW,
+                  boxShadow: "0 4px 14px rgba(124,111,232,0.4)",
                 }}
                 onClick={() => { window.location.href = `/search/${item.id}`; }}
               >
@@ -532,15 +575,17 @@ function TagResultView({
   followedTags,
   setFollowedTags,
   onBack,
+  hideFollow,
   onClose,
   onTagSelect,
 }: {
   tag: string;
   followedTags: Set<string>;
   setFollowedTags: React.Dispatch<React.SetStateAction<Set<string>>>;
-  onBack:      () => void;
-  onClose:     () => void;
-  onTagSelect: (tag: string) => void;
+  onBack:       () => void;
+  hideFollow?:  boolean;
+  onClose:      () => void;
+  onTagSelect:  (tag: string) => void;
 }) {
   const entry      = HASHTAG_DATA[tag];
   const isFollowed = followedTags.has(tag);
@@ -550,20 +595,18 @@ function TagResultView({
   const reactionTarget = 10;
   const [postCount,     setPostCount]     = useState(0);
   const [reactionCount, setReactionCount] = useState(0);
-  const [showBanner,    setShowBanner]    = useState(false);
   const [toast,         setToast]         = useState('');
-  const bannerShownRef                    = useRef(false);
 
-  const canComment = isFollowed && postCount >= postTarget && reactionCount >= reactionTarget;
+  const isEngaged     = postCount >= postTarget && reactionCount >= reactionTarget;
+  const canComment    = (isFollowed || !!hideFollow) && isEngaged;
 
+  // getTagEngagementの値を常に使う（タグが変わるたびにリセット）
   useEffect(() => {
-    if (!bannerShownRef.current && postCount >= postTarget && reactionCount >= reactionTarget) {
-      bannerShownRef.current = true;
-      setShowBanner(true);
-      const t = setTimeout(() => setShowBanner(false), 3000);
-      return () => clearTimeout(t);
-    }
-  }, [postCount, reactionCount]);
+    const tagName = tag.replace('#', '');
+    const engagement = getTagEngagement(tagName);
+    setPostCount(engagement.postCount);
+    setReactionCount(engagement.reactionCount);
+  }, [tag]);
 
   function handleReactionIncrement() {
     setReactionCount((c) => Math.min(c + 1, reactionTarget));
@@ -577,7 +620,7 @@ function TagResultView({
     if (isFollowed && postCount < postTarget) {
       setPostCount((c) => Math.min(c + 1, postTarget));
     }
-    setToast('投稿3回・リアクション10回で解放されます');
+    setToast('投稿3回またはリアクション10回で解放されます');
     setTimeout(() => setToast(''), 2500);
   }
 
@@ -611,28 +654,6 @@ function TagResultView({
   return (
     <div className="absolute inset-0 z-[200] flex flex-col" style={{ background: 'var(--background)' }}>
 
-      {/* ── 達成バナー */}
-      {showBanner && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 0, left: 0, right: 0,
-            zIndex: 10,
-            background: 'linear-gradient(135deg, #4A0D7A 0%, #2D1B69 50%, #0D2A5B 100%)',
-            borderRadius: '0 0 16px 16px',
-            padding: '14px 20px',
-            color: '#fff',
-            fontSize: 13,
-            fontWeight: 700,
-            textAlign: 'center',
-            boxShadow: '0 4px 24px rgba(74,13,122,0.5)',
-            animation: 'slideDownIn 0.35s ease-out',
-          }}
-        >
-          🎉 コメント解放！このコミュニティで発言できるようになりました
-        </div>
-      )}
-
       {/* ── ヘッダー */}
       <div className="flex items-center gap-3 px-4 py-3 border-b border-border shrink-0">
         <button
@@ -659,26 +680,31 @@ function TagResultView({
               <span className="font-bold text-fore">{entry.followers.toLocaleString()}</span> people following
             </p>
           </div>
-          {isFollowed ? (
+          {(isFollowed || hideFollow) ? (
             <div style={{ minWidth: 130 }}>
               <div style={{ marginBottom: 7 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
                   <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)' }}>投稿</span>
-                  <span style={{ fontSize: 10, color: 'rgba(201,168,76,0.9)', fontWeight: 700 }}>{postCount}/{postTarget}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, backgroundImage: RAINBOW, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>{postCount}/{postTarget}</span>
                 </div>
                 <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.1)' }}>
-                  <div style={{ height: '100%', borderRadius: 2, background: 'linear-gradient(90deg, #4A0D7A, #C9A84C)', width: `${Math.min(postCount / postTarget, 1) * 100}%`, transition: 'width 0.5s ease-out' }} />
+                  <div style={{ height: '100%', borderRadius: 2, background: RAINBOW, width: `${Math.min(postCount / postTarget, 1) * 100}%`, transition: 'width 0.5s ease-out' }} />
                 </div>
               </div>
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
                   <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)' }}>リアクション</span>
-                  <span style={{ fontSize: 10, color: 'rgba(201,168,76,0.9)', fontWeight: 700 }}>{reactionCount}/{reactionTarget}</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, backgroundImage: RAINBOW, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>{reactionCount}/{reactionTarget}</span>
                 </div>
                 <div style={{ height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.1)' }}>
-                  <div style={{ height: '100%', borderRadius: 2, background: 'linear-gradient(90deg, #4A0D7A, #C9A84C)', width: `${Math.min(reactionCount / reactionTarget, 1) * 100}%`, transition: 'width 0.5s ease-out' }} />
+                  <div style={{ height: '100%', borderRadius: 2, background: RAINBOW, width: `${Math.min(reactionCount / reactionTarget, 1) * 100}%`, transition: 'width 0.5s ease-out' }} />
                 </div>
               </div>
+              {isEngaged && (
+                <div style={{ marginTop: 6, fontSize: 10, color: '#4ade80', fontWeight: 700 }}>
+                  ✓ コメント解放済み
+                </div>
+              )}
             </div>
           ) : (
             <button
@@ -690,7 +716,7 @@ function TagResultView({
             </button>
           )}
         </div>
-        {!isFollowed && (
+        {!isFollowed && !hideFollow && (
           <p className="mt-3 text-[11px] text-muted/70 leading-relaxed">
             Follow to connect with this community
           </p>
@@ -722,7 +748,7 @@ function TagResultView({
           transform: 'translateX(-50%)',
           zIndex: 20,
           background: 'rgba(20,20,42,0.96)',
-          border: '1px solid rgba(201,168,76,0.35)',
+          border: '1px solid rgba(255,26,26,0.35)',
           color: '#fff',
           fontSize: 12,
           fontWeight: 600,

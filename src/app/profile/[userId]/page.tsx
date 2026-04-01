@@ -96,7 +96,7 @@ export default function FriendProfilePage({
         >
           <div
             className="absolute inset-0"
-            style={{ background: 'radial-gradient(ellipse at 65% 40%, rgba(201,168,76,0.10) 0%, transparent 65%)' }}
+            style={{ background: 'radial-gradient(ellipse at 65% 40%, rgba(255,26,26,0.10) 0%, transparent 65%)' }}
           />
         </div>
 

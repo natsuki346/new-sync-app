@@ -40,7 +40,15 @@
       "Bash(git config:*)",
       "Bash(git branch:*)",
       "Bash(git remote:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(grep:*)",
+      "Bash(node -e \"require\\(''''canvas''''\\)\")",
+      "Bash(node -e \"require\\(''''sharp''''\\)\")",
+      "Bash(node -e \"require\\(''''jimp''''\\)\")",
+      "Bash(node:*)",
+      "Bash(ls:*)",
+      "Bash(xargs sed:*)",
+      "Bash(npm run:*)"
     ]
   }
 }

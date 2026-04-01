@@ -4,6 +4,8 @@ import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { CONVERSATIONS, type Conversation } from '@/lib/mockData';
 
+const RAINBOW = 'linear-gradient(to right, #7C6FE8 0%, #D455A8 18%, #E84040 36%, #E8A020 52%, #48C468 68%, #2890D8 84%, #7C6FE8 100%)'
+
 // ── 型 ────────────────────────────────────────────────────────────
 
 type Filter    = 'all' | 'friends' | 'groups';
@@ -155,9 +157,8 @@ export default function ChatPage() {
           onClick={() => openSheet('menu')}
           className="w-8 h-8 flex items-center justify-center rounded-full transition-all active:scale-90"
           style={{
-            background: 'rgba(201,168,76,0.12)',
-            border: '1px solid rgba(201,168,76,0.3)',
-            color: 'var(--brand)',
+            background: RAINBOW,
+            color: '#ffffff',
           }}
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
@@ -221,13 +222,20 @@ export default function ChatPage() {
             key={key}
             onClick={() => setFilter(key)}
             className="mr-6 py-3 text-sm font-medium relative transition-colors duration-200"
-            style={{ color: filter === key ? 'var(--brand)' : 'var(--muted)' }}
+            style={filter === key ? {
+              backgroundImage: RAINBOW,
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+            } : {
+              color: 'var(--muted)',
+            }}
           >
             {label}
             {filter === key && (
               <span
                 className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
-                style={{ background: 'var(--brand)' }}
+                style={{ background: RAINBOW }}
               />
             )}
           </button>
@@ -259,7 +267,7 @@ export default function ChatPage() {
                 <span
                   className="absolute top-0 right-0 w-3 h-3 rounded-full border-2"
                   style={{
-                    background: 'var(--brand)',
+                    background: RAINBOW,
                     borderColor: 'var(--background)',
                   }}
                 />
@@ -285,9 +293,9 @@ export default function ChatPage() {
                     <span
                       className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0"
                       style={{
-                        background: 'rgba(201,168,76,0.12)',
+                        background: 'rgba(255,26,26,0.12)',
                         color: 'var(--brand)',
-                        border: '1px solid rgba(201,168,76,0.25)',
+                        border: '1px solid rgba(255,26,26,0.25)',
                       }}
                     >
                       Group
@@ -390,7 +398,7 @@ export default function ChatPage() {
                     <div
                       className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
                       style={{
-                        background: 'rgba(201,168,76,0.12)',
+                        background: 'rgba(255,26,26,0.12)',
                         color: 'var(--brand)',
                       }}
                     >
@@ -489,8 +497,8 @@ export default function ChatPage() {
                           onClick={() => toggleMember(id)}
                           className="flex items-center gap-1.5 px-2.5 py-1 rounded-full flex-shrink-0 transition-all"
                           style={{
-                            background: 'rgba(201,168,76,0.15)',
-                            border: '1px solid rgba(201,168,76,0.35)',
+                            background: 'rgba(255,26,26,0.15)',
+                            border: '1px solid rgba(255,26,26,0.35)',
                             color: 'var(--brand)',
                           }}
                         >
@@ -540,7 +548,7 @@ export default function ChatPage() {
                         >
                           {selected && (
                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
-                              stroke="#0d0d1a" strokeWidth="3"
+                              stroke="#ffffff" strokeWidth="3"
                               strokeLinecap="round" strokeLinejoin="round"
                             >
                               <path d="M20 6L9 17l-5-5" />
@@ -559,7 +567,7 @@ export default function ChatPage() {
               <div className="flex flex-col items-center px-6 pt-4 pb-10 text-center">
                 <div
                   className="w-16 h-16 rounded-full flex items-center justify-center mb-4"
-                  style={{ background: 'rgba(201,168,76,0.12)', color: 'var(--brand)' }}
+                  style={{ background: 'rgba(255,26,26,0.12)', color: 'var(--brand)' }}
                 >
                   <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
                     stroke="currentColor" strokeWidth="1.8"
@@ -580,7 +588,7 @@ export default function ChatPage() {
                 <button
                   onClick={() => openSheet('menu')}
                   className="px-8 py-3 rounded-full text-sm font-bold transition-all active:scale-95"
-                  style={{ background: 'var(--brand)', color: '#0d0d1a' }}
+                  style={{ background: 'var(--brand)', color: '#ffffff' }}
                 >
                   戻る
                 </button>
