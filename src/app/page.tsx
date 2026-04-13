@@ -9,12 +9,12 @@ export default function SplashPage() {
 
   useEffect(() => {
     if (sessionStorage.getItem("sync_splashed")) {
-      router.replace("/auth");
+      router.replace("/home");
       return;
     }
     const t = setTimeout(() => {
       sessionStorage.setItem("sync_splashed", "1");
-      router.replace("/auth");
+      router.replace("/home");
     }, 1200);
     return () => clearTimeout(t);
   }, [router]);

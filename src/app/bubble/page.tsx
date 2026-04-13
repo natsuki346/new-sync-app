@@ -1092,27 +1092,78 @@ export default function BubblePage() {
   const addBubbleRef = useRef(addBubble);
   useEffect(() => { addBubbleRef.current = addBubble; }, [addBubble]);
 
-  // ゲストモード: ユーザー未ログイン時にモックバブルを表示
+  // ゲストモード: ユーザー未ログイン時にモックバブルを初期表示
   useEffect(() => {
-    if (loading) return;       // セッション確認中は待つ
-    if (user !== null) return; // ログイン済みはスキップ
+    console.log('ゲストuseEffect発火', { loading, user });
+    if (loading) return;
+    if (user !== null) return;
 
-    const MOCK_TEXTS = [
-      '今日のランチ美味しかった🍜',
-      '渋谷で音楽イベントやってる！',
-      '誰かボドゲやりたい人いる？🎲',
-      'この近くでおすすめのカフェある？',
-      '今夜飲みいける人！🍻',
-    ];
-    const MOCK_AVATARS = ['🍜', '🎵', '🎲', '☕', '🍻'];
+    // DOMマウント後に実行するため少し遅延
+    const timer = setTimeout(() => {
+      console.log('タイマー発火', {
+        fw: fieldRef.current?.offsetWidth,
+        fh: fieldRef.current?.offsetHeight,
+        fieldRef: fieldRef.current,
+      });
+      const fw = fieldRef.current?.offsetWidth  ?? 375;
+      const fh = fieldRef.current?.offsetHeight ?? 600;
 
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    MOCK_TEXTS.forEach((text, i) => {
-      timers.push(setTimeout(() => {
-        addBubbleRef.current(text, false, MOCK_AVATARS[i]);
-      }, i * 900));
-    });
-    return () => timers.forEach(clearTimeout);
+      // fw または fh が 0 の場合はデフォルト値を使用
+      const safefw = fw > 0 ? fw : 375;
+      const safefh = fh > 0 ? fh : 600;
+
+      const MOCK_DATA = [
+        { text: '今日のランチ美味しかった🍜', avatar: '🍜' },
+        { text: '渋谷で音楽イベントやってる！',    avatar: '🎵' },
+        { text: '誰かボドゲやりたい人いる？🎲',   avatar: '🎲' },
+        { text: 'この近くでおすすめのカフェある？', avatar: '☕' },
+        { text: '今夜飲みいける人！🍻',            avatar: '🍻' },
+      ];
+
+      const initY  = HEADER_H + safefh - INPUT_H - BUBBLE_H;
+      const initVy = -((initY - BURST_LINE_Y) / BUBBLE_LIFETIME);
+      const now    = Date.now();
+
+      const mockBubbles: Bubble[] = MOCK_DATA.map((item, i) => {
+        const laneIdx = (i * 2) % LANE_COUNT;
+        const x       = LANES[laneIdx] * safefw;
+        const width   = 160;
+        const vx      = (i % 2 === 0 ? 1 : -1) * 8;
+        const id      = `mock-${i}`;
+
+        // 物理エンジン（RAFループ）用にエントリを登録
+        physicsRef.current.set(id, {
+          x, y: initY, vx, vy: initVy,
+          timeLeft: BUBBLE_LIFETIME, width,
+          isOwn: false, lane: laneIdx, paused: false,
+          createdAt: now, pausedElapsed: 0, pausedAt: null,
+        });
+
+        return {
+          id,
+          text:        item.text,
+          avatar:      item.avatar,
+          handle:      'user',
+          isOwn:       false,
+          lane:        laneIdx,
+          left:        LANES[laneIdx] * 100,
+          width,
+          createdAt:   now,
+          vx,
+          vy:          initVy,
+          timeLeft:    BUBBLE_LIFETIME,
+          x,
+          y:           initY,
+          textColor:   '#FFFFFF',
+          paused:      false,
+          borderColor: RANDOM_BORDER_COLORS[i % RANDOM_BORDER_COLORS.length],
+        };
+      });
+
+      setBubbles(mockBubbles);
+    }, 500);
+
+    return () => clearTimeout(timer);
   }, [loading, user]);
 
   // 自動生成（DEV_AUTO_SPAWN=true のときのみ動作）
