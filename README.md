@@ -117,7 +117,7 @@ Jpanese Version
 
 
 <p align="center">
-  <img src="assets/logo.png" width="180">
+  <img src="assets/ui.png" width="180">
 </p>
 
 <h1 align="center">SYNC.</h1>
@@ -132,7 +132,7 @@ Jpanese Version
 ## 🌌 体験
 
 <p align="center">
-  <img src="assets/ui.png" width="300">
+  <img src="assets/logo.png" width="300">
 </p>
 
 <p align="center">
