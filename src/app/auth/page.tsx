@@ -189,23 +189,21 @@ export default function AuthPage() {
         </button>
       </form>
 
-      <button
-        type="button"
-        onClick={() => router.push('/bubble')}
-        style={{
-          marginTop: 28,
-          background: 'none',
-          border: 'none',
-          color: 'rgba(255,255,255,0.4)',
-          fontSize: 13,
-          cursor: 'pointer',
-          padding: '4px 8px',
-          textDecoration: 'underline',
-          textUnderlineOffset: 3,
-        }}
-      >
-        デモとして見る →
-      </button>
+      <div style={{ textAlign: 'center', marginTop: '16px' }}>
+        <button
+          onClick={() => router.push('/bubble')}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'rgba(255,255,255,0.5)',
+            fontSize: '14px',
+            cursor: 'pointer',
+            textDecoration: 'underline',
+          }}
+        >
+          デモとして見る →
+        </button>
+      </div>
     </div>
   );
 }
