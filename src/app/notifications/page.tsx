@@ -1,116 +1,78 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
-const RAINBOW = 'linear-gradient(to right, #7C6FE8 0%, #D455A8 18%, #E84040 36%, #E8A020 52%, #48C468 68%, #2890D8 84%, #7C6FE8 100%)'
+const RAINBOW = 'linear-gradient(to right, #7C6FE8 0%, #D455A8 18%, #E84040 36%, #E8A020 52%, #48C468 68%, #2890D8 84%, #7C6FE8 100%)';
 
 // ── 型定義 ────────────────────────────────────────────────────────
 
 type NotifType = 'follow' | 'bubble' | 'dm' | 'reaction' | 'comment' | 'event_reminder';
 
 interface Notif {
-  id: string;
-  type: NotifType;
-  avatar: string;
-  title: string;
-  body: string;
-  time: string;
-  read: boolean;
-  userId?: string;
-  userName?: string;
-  link?: string;
+  id:            string;
+  type:          NotifType;
+  avatar:        string;
+  title:         string;
+  body:          string;
+  time:          string;
+  read:          boolean;
+  userId?:       string;   // from_profile.id（UUID）— follows操作用
+  userName?:     string;   // from_profile.username — プロフィール遷移用
+  link?:         string;
   bubbleContext?: string;
 }
 
-// ── モックデータ ──────────────────────────────────────────────────
+// ── ヘルパー ──────────────────────────────────────────────────────
 
-const MOCK_NOTIFS: Notif[] = [
-  {
-    id: 'n1', type: 'follow',
-    avatar: '🌸', title: 'フォローリクエスト',
-    body: 'yuki があなたをフォローしました',
-    time: '3分前', read: false,
-    userId: 'yuki', userName: 'yuki',
-  },
-  {
-    id: 'n2', type: 'reaction',
-    avatar: '🎨', title: 'リアクション',
-    body: 'kai があなたの投稿に ❤️ しました',
-    time: '12分前', read: false,
-    userId: 'kai', userName: 'kai',
-    bubbleContext: 'Last night\'s show was everything.\nThe setlist was so perfect.',
-  },
-  {
-    id: 'n3', type: 'dm',
-    avatar: '🌺', title: '新しいDM',
-    body: 'hana: 「今日のライブどうだった？」',
-    time: '28分前', read: false,
-    userId: 'hana', userName: 'hana',
-    link: '/chat/hana',
-  },
-  {
-    id: 'n4', type: 'event_reminder',
-    avatar: '📅', title: 'イベントリマインダー',
-    body: '「SYNC LIVE vol.3 渋谷」まであと3日！',
-    time: '1時間前', read: false,
-  },
-  {
-    id: 'n5', type: 'comment',
-    avatar: '🎵', title: '新しいコメント',
-    body: 'mio があなたの投稿にコメントしました: 「わかる、この曲ずっと聴いてる」',
-    time: '2時間前', read: true,
-    userId: 'mio', userName: 'mio',
-    bubbleContext: '毎日続けていることがある。\nそれが自分の一部になってきた。',
-  },
-  {
-    id: 'n6', type: 'bubble',
-    avatar: '🎧', title: 'Bubble リアクション',
-    body: 'ryu があなたのBubbleに共鳴しました ✨',
-    time: '昨日', read: true,
-    userId: 'ryu', userName: 'ryu',
-    bubbleContext: '音楽の話がしたい気分。\n#music #jprock',
-  },
-  {
-    id: 'n7', type: 'follow',
-    avatar: '☕', title: 'フォローリクエスト',
-    body: 'nagi があなたをフォローしました',
-    time: '昨日', read: true,
-    userId: 'nagi', userName: 'nagi',
-  },
-  {
-    id: 'n8', type: 'dm',
-    avatar: '🎨', title: '新しいDM',
-    body: 'kai: 「そのデザイン本おすすめだよ」',
-    time: '2日前', read: true,
-    userId: 'kai', userName: 'kai',
-    link: '/chat/kai',
-  },
-];
+function getNotifText(type: string, userName: string): { title: string; body: string } {
+  switch (type) {
+    case 'follow':         return { title: 'フォローリクエスト',     body: `${userName}さんがフォローしました` };
+    case 'reaction':       return { title: 'リアクション',            body: `${userName}さんがリアクションしました` };
+    case 'comment':        return { title: 'コメント',                body: `${userName}さんがコメントしました` };
+    case 'dm':             return { title: 'メッセージ',              body: `${userName}さんからメッセージ` };
+    case 'bubble':         return { title: 'Bubble',                  body: `${userName}さんがBubbleを送りました` };
+    case 'event_reminder': return { title: 'イベントリマインダー',   body: 'イベントが近づいています' };
+    default:               return { title: '通知',                    body: '' };
+  }
+}
+
+function getRelativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const min  = Math.floor(diff / 60000);
+  const hour = Math.floor(diff / 3600000);
+  const day  = Math.floor(diff / 86400000);
+  if (min  < 1)  return 'たった今';
+  if (min  < 60) return `${min}分前`;
+  if (hour < 24) return `${hour}時間前`;
+  return `${day}日前`;
+}
 
 // ── タイプスタイル ────────────────────────────────────────────────
 
 function typeStyle(type: NotifType) {
   switch (type) {
-    case 'follow':         return { bg: 'rgba(230,57,70,0.12)',   color: '#E63946',  badge: '👤' };
-    case 'bubble':         return { bg: 'rgba(255,107,157,0.12)', color: '#FF6B9D',  badge: '🫧' };
-    case 'dm':             return { bg: 'rgba(80,160,255,0.12)',  color: '#50A0FF',  badge: '💬' };
-    case 'event_reminder': return { bg: 'rgba(255,180,0,0.12)',   color: '#FFB400',  badge: '🔔' };
-    case 'reaction':       return { bg: 'rgba(230,57,70,0.10)',   color: '#E63946',  badge: '❤️' };
-    case 'comment':        return { bg: 'rgba(255,160,64,0.12)',  color: '#FFA040',  badge: '💬' };
+    case 'follow':         return { bg: 'rgba(230,57,70,0.12)',   color: '#E63946', badge: '👤' };
+    case 'bubble':         return { bg: 'rgba(255,107,157,0.12)', color: '#FF6B9D', badge: '🫧' };
+    case 'dm':             return { bg: 'rgba(80,160,255,0.12)',  color: '#50A0FF', badge: '💬' };
+    case 'event_reminder': return { bg: 'rgba(255,180,0,0.12)',   color: '#FFB400', badge: '🔔' };
+    case 'reaction':       return { bg: 'rgba(230,57,70,0.10)',   color: '#E63946', badge: '❤️' };
+    case 'comment':        return { bg: 'rgba(255,160,64,0.12)',  color: '#FFA040', badge: '💬' };
   }
 }
 
 // ── フィルタータブ ────────────────────────────────────────────────
 
 const FILTERS = [
-  { key: 'all',            label: 'すべて' },
-  { key: 'follow',         label: 'フォロー' },
-  { key: 'dm',             label: 'DM' },
-  { key: 'reaction',       label: 'リアクション' },
-  { key: 'comment',        label: 'コメント' },
-  { key: 'bubble',         label: 'Bubble' },
-  { key: 'event_reminder', label: 'イベント' },
+  { key: 'all',            tKey: 'all' },
+  { key: 'follow',         tKey: 'follow' },
+  { key: 'dm',             tKey: 'dm' },
+  { key: 'reaction',       tKey: 'reaction' },
+  { key: 'comment',        tKey: 'comment' },
+  { key: 'event_reminder', tKey: 'event' },
 ] as const;
 
 type FilterKey = typeof FILTERS[number]['key'];
@@ -119,43 +81,137 @@ type FilterKey = typeof FILTERS[number]['key'];
 
 export default function NotificationsPage() {
   const router = useRouter();
-  const [filter, setFilter]         = useState<FilterKey>('all');
-  const [notifs, setNotifs]         = useState<Notif[]>(MOCK_NOTIFS);
+  const t      = useTranslations('notifications');
+  const { user } = useAuth();
+
+  const [filter,      setFilter]      = useState<FilterKey>('all');
+  const [notifs,      setNotifs]      = useState<Notif[]>([]);
+  const [loading,     setLoading]     = useState(true);
   const [acceptedIds, setAcceptedIds] = useState<Set<string>>(new Set());
-  const [toast, setToast]           = useState('');
+  const [toast,       setToast]       = useState('');
 
-  const displayed = notifs.filter(
-    (n) => filter === 'all' || n.type === filter
-  );
+  // ── データ取得 + 全件既読 ──────────────────────────────────────
+  const fetchAndMarkRead = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
 
-  const unreadCount = notifs.filter((n) => !n.read).length;
+    // 通知一覧（送信者プロフィール結合）
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: rows } = await (supabase.from('notifications') as any)
+      .select(`
+        id, type, read, created_at, target_id, from_user_id,
+        from_profile:profiles!notifications_from_user_id_fkey (
+          id, username, avatar_url
+        )
+      `)
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
 
-  function markRead(id: string) {
-    setNotifs((prev) => prev.map((n) => n.id === id ? { ...n, read: true } : n));
+    if (rows) {
+      // reaction / comment / bubble → posts.content を取得して bubbleContext に使う
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const needsPost = (rows as any[]).filter(
+        n => ['reaction', 'comment', 'bubble'].includes(n.type) && n.target_id
+      );
+      let postContents: Record<string, string> = {};
+      if (needsPost.length > 0) {
+        const ids = needsPost.map((n: any) => n.target_id as string);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: posts } = await (supabase.from('posts') as any)
+          .select('id, content')
+          .in('id', ids);
+        if (posts) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          postContents = Object.fromEntries((posts as any[]).map(p => [p.id, p.content as string]));
+        }
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mapped: Notif[] = (rows as any[]).map(n => {
+        const prof     = n.from_profile;
+        const userName = prof?.username ?? '';
+        const { title, body } = getNotifText(n.type, userName);
+        return {
+          id:           n.id,
+          type:         n.type as NotifType,
+          avatar:       prof?.avatar_url ?? '👤',
+          title,
+          body,
+          time:         getRelativeTime(n.created_at),
+          read:         n.read,
+          userId:       prof?.id,
+          userName:     userName || undefined,
+          link:         n.type === 'dm' && prof?.id ? `/chat/${prof.id}` : undefined,
+          bubbleContext: n.target_id ? postContents[n.target_id] : undefined,
+        };
+      });
+
+      setNotifs(mapped);
+    }
+
+    // 全件既読にする
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('notifications') as any)
+      .update({ read: true })
+      .eq('user_id', user.id)
+      .eq('read', false);
+
+    setLoading(false);
+  }, [user]);
+
+  useEffect(() => {
+    fetchAndMarkRead();
+  }, [fetchAndMarkRead]);
+
+  // ── ローカル既読マーク ─────────────────────────────────────────
+  function markReadLocal(id: string) {
+    setNotifs(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
   }
 
-  function handleAcceptFollow(notif: Notif, e: React.MouseEvent) {
+  // ── フォロー承認 ───────────────────────────────────────────────
+  async function handleAcceptFollow(notif: Notif, e: React.MouseEvent) {
     e.stopPropagation();
-    if (!notif.userId) return;
-    setAcceptedIds((prev) => new Set([...prev, notif.userId!]));
-    markRead(notif.id);
-    setToast('つながりました！');
+    if (!user || !notif.userId) return;
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('follows') as any).insert({
+      follower_id:  notif.userId,
+      following_id: user.id,
+      type:         'user',
+      status:       'accepted',
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('notifications') as any).update({ read: true }).eq('id', notif.id);
+
+    setAcceptedIds(prev => new Set([...prev, notif.userId!]));
+    markReadLocal(notif.id);
+    setToast(t('connected'));
     setTimeout(() => setToast(''), 2000);
   }
 
-  function handleRejectFollow(notif: Notif, e: React.MouseEvent) {
+  // ── フォロー拒否 ───────────────────────────────────────────────
+  async function handleRejectFollow(notif: Notif, e: React.MouseEvent) {
     e.stopPropagation();
-    setNotifs((prev) => prev.filter((n) => n.id !== notif.id));
+    await supabase.from('notifications').delete().eq('id', notif.id);
+    setNotifs(prev => prev.filter(n => n.id !== notif.id));
   }
 
+  // ── タップ ─────────────────────────────────────────────────────
   function handleTap(notif: Notif) {
-    markRead(notif.id);
+    markReadLocal(notif.id);
     if (notif.type === 'dm' && notif.link) {
       router.push(notif.link);
-    } else if (notif.userId) {
-      router.push(`/profile/${notif.userId}`);
+    } else if (notif.userName) {
+      router.push(`/profile/${notif.userName}`);
     }
   }
+
+  const displayed = notifs.filter(n => {
+    if (filter === 'all') return true;
+    if (filter === 'reaction') return n.type === 'reaction' || n.type === 'bubble';
+    return n.type === filter;
+  });
+  const unreadCount  = notifs.filter(n => !n.read).length;
 
   return (
     <div className="flex flex-col flex-1 min-h-0" style={{ background: 'var(--background)' }}>
@@ -181,12 +237,12 @@ export default function NotificationsPage() {
         </button>
 
         <h1 className="text-base font-black flex-1" style={{ color: 'var(--foreground)' }}>
-          通知
+          {t('title')}
         </h1>
 
         {unreadCount > 0 && (
           <span className="text-xs" style={{ color: 'var(--muted)' }}>
-            未読 {unreadCount}件
+            {t('unread', { count: unreadCount })}
           </span>
         )}
       </header>
@@ -196,7 +252,7 @@ export default function NotificationsPage() {
         className="flex gap-2 px-4 py-2.5 overflow-x-auto scrollbar-none flex-shrink-0"
         style={{ borderBottom: '1px solid var(--surface-2)' }}
       >
-        {FILTERS.map(({ key, label }) => (
+        {FILTERS.map(({ key, tKey }) => (
           <button
             key={key}
             onClick={() => setFilter(key)}
@@ -207,22 +263,26 @@ export default function NotificationsPage() {
                 : { background: 'var(--surface-2)', color: 'var(--muted)', border: '1px solid var(--surface-2)' }
             }
           >
-            {label}
+            {t(tKey as any)}
           </button>
         ))}
       </div>
 
       {/* ── 通知リスト ────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto pb-20">
-        {displayed.length === 0 ? (
+        {loading ? (
+          <div className="py-16 text-center">
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>Loading...</p>
+          </div>
+        ) : displayed.length === 0 ? (
           <div className="py-16 text-center">
             <p className="text-3xl mb-3">🔔</p>
-            <p className="text-sm" style={{ color: 'var(--muted)' }}>通知はありません</p>
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>{t('empty')}</p>
           </div>
         ) : (
           displayed.map((notif) => {
-            const s = typeStyle(notif.type);
-            const isFollowed = notif.userId ? acceptedIds.has(notif.userId) : false;
+            const s          = typeStyle(notif.type);
+            const isAccepted = notif.userId ? acceptedIds.has(notif.userId) : false;
 
             return (
               <div
@@ -264,7 +324,7 @@ export default function NotificationsPage() {
                     {notif.body}
                   </p>
 
-                  {/* Bubble コンテキスト */}
+                  {/* Bubble コンテキスト（元投稿の引用） */}
                   {notif.bubbleContext && (
                     <p
                       className="text-[12px] mt-1.5 leading-relaxed px-2.5 py-1.5 rounded-lg"
@@ -275,7 +335,7 @@ export default function NotificationsPage() {
                   )}
 
                   {/* Follow: ✓ / × ボタン */}
-                  {notif.type === 'follow' && notif.userId && !isFollowed && (
+                  {notif.type === 'follow' && notif.userId && !isAccepted && (
                     <div className="flex gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={(e) => handleAcceptFollow(notif, e)}
@@ -299,12 +359,12 @@ export default function NotificationsPage() {
                   )}
 
                   {/* Follow: 承認済み */}
-                  {notif.type === 'follow' && notif.userId && isFollowed && (
+                  {notif.type === 'follow' && notif.userId && isAccepted && (
                     <span
                       className="inline-block mt-2 text-[11px] font-bold px-3 py-1 rounded-full"
                       style={{ background: 'var(--surface-2)', color: 'var(--muted)' }}
                     >
-                      友達
+                      {t('friend')}
                     </span>
                   )}
 
@@ -317,7 +377,7 @@ export default function NotificationsPage() {
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
                       </svg>
-                      チャットを開く
+                      {t('openChat')}
                     </span>
                   )}
                 </div>

@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { use, useState } from "react";
 import { useRouter } from "next/navigation";
 import { INFO_EVENTS } from "@/lib/mockData";
+import ReactionPicker from "@/components/ReactionPicker";
 
 // ── 友達の参加モックデータ ────────────────────────────────────────
 
@@ -298,8 +299,10 @@ export default function EventDetailPage({
 
   const [c1, c2, c3] = extra.colors;
 
-  const [joined,      setJoined]      = useState(false);
-  const [showPayment, setShowPayment] = useState(false);
+  const [joined,         setJoined]         = useState(false);
+  const [showPayment,    setShowPayment]    = useState(false);
+  const [eventReaction,  setEventReaction]  = useState<string | null>(null);
+  const [reactionCount,  setReactionCount]  = useState(0);
 
   function handleJoin() {
     if (joined) return;
@@ -464,6 +467,26 @@ export default function EventDetailPage({
 
           {/* ── 友達の参加状況 ──────────────────────────────────── */}
           <FriendActivity eventId={ev.id} />
+
+          {/* ── リアクション ────────────────────────────────────── */}
+          <div
+            className="rounded-2xl border border-border px-5 py-4 flex items-center gap-4"
+            style={{ background: "rgb(var(--surface-rgb))" }}
+          >
+            <span className="text-xs text-muted font-medium flex-1">このイベントへのリアクション</span>
+            <ReactionPicker
+              hashtagId={ev.tags[0] ?? ev.id}
+              postId={ev.id}
+              onReact={(emoji) => {
+                if (eventReaction !== emoji) {
+                  setEventReaction(emoji);
+                  setReactionCount((c) => c + 1);
+                }
+              }}
+              initialEmoji={eventReaction}
+              reactionCount={reactionCount}
+            />
+          </div>
 
           {/* ── アクションボタン ─────────────────────────────────── */}
           <div className="space-y-3 pt-1">

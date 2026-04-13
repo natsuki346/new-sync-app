@@ -48,7 +48,31 @@
       "Bash(node:*)",
       "Bash(ls:*)",
       "Bash(xargs sed:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(taskkill /PID 8128 /F)",
+      "Bash(cmd /c \"taskkill /PID 8128 /F\")",
+      "Bash(cmd /c \"taskkill /F /IM node.exe\")",
+      "Bash(echo \"exit: $?\")",
+      "Bash(cmd /c \"rmdir /s /q C:\\\\Users\\\\81908\\\\sync-v5\\\\.next\")",
+      "Bash(cmd /c \"taskkill /F /IM node.exe 2>&1 && echo KILLED || echo NO_NODE_PROCESS\")",
+      "Bash(powershell -Command \"Stop-Process -Name node -Force -ErrorAction SilentlyContinue; Write-Host 'Done'\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d['version']\\)\")",
+      "Bash(taskkill /PID 15760 /F)",
+      "Bash(taskkill:*)",
+      "Bash(cmd /c \"npx tsc --noEmit 2>&1\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(supabase db:*)",
+      "Bash(npx supabase:*)",
+      "Bash(curl:*)",
+      "Bash(netstat -ano)",
+      "Bash(cmd:*)",
+      "Bash(powershell:*)",
+      "Bash(SUPABASE_ACCESS_TOKEN=sbp_bb78601801a64354858cb21df3362bf7fe51bdfb npx supabase projects list)",
+      "Bash(SUPABASE_ACCESS_TOKEN=sbp_bb78601801a64354858cb21df3362bf7fe51bdfb npx supabase link --project-ref gyonvrgtfdrfpbcroasl)",
+      "Bash(SUPABASE_ACCESS_TOKEN=sbp_bb78601801a64354858cb21df3362bf7fe51bdfb npx supabase db diff)",
+      "Bash(SUPABASE_ACCESS_TOKEN=sbp_bb78601801a64354858cb21df3362bf7fe51bdfb npx supabase db push --dry-run)",
+      "Bash(SUPABASE_ACCESS_TOKEN=sbp_bb78601801a64354858cb21df3362bf7fe51bdfb npx supabase db push)",
+      "Bash(wc:*)"
     ]
   }
 }

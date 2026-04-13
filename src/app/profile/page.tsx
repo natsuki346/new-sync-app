@@ -1,13 +1,33 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { CURRENT_USER, MY_POSTS, MEMORY_DATA, MOCK_USERS, type Post, type MemoryDayData, type Reaction } from '@/lib/mockData';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
+import { CURRENT_USER, MEMORY_DATA, type Post, type MemoryDayData, type Reaction } from '@/lib/mockData';
 import { PassionGraph, MY_PASSION } from '@/components/PassionGraph';
 import { RAINBOW } from '@/lib/rainbow';
 
-// ── 友達モックデータ（mockData.ts の MOCK_USERS から友達のみ抽出） ─
-const FRIENDS_MOCK = MOCK_USERS.filter((u) => u.isFriend);
+// ── 友達型 ────────────────────────────────────────────────────────
+type Friend = {
+  id:       string;
+  name:     string;   // display_name
+  handle:   string;   // @username
+  username: string;   // raw username（ルーティング用）
+  avatar:   string;
+};
+
+function getRelativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const min  = Math.floor(diff / 60000);
+  const hour = Math.floor(diff / 3600000);
+  const day  = Math.floor(diff / 86400000);
+  if (min  < 1)  return 'たった今';
+  if (min  < 60) return `${min}分前`;
+  if (hour < 24) return `${hour}時間前`;
+  return `${day}日前`;
+}
 
 // ── 友達ボトムシート（索引付き） ─────────────────────────────────
 
@@ -27,14 +47,20 @@ function getJaGroup(name: string): string {
   return c.toUpperCase();
 }
 
-function FriendsSheet({ onClose }: { onClose: () => void }) {
+function FriendsSheet({ onClose, friends, loading }: {
+  onClose:  () => void;
+  friends:  Friend[];
+  loading:  boolean;
+}) {
+  const t = useTranslations('profile');
+  const tc = useTranslations('common');
   const router = useRouter();
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [searchQuery, setSearchQuery] = useState('');
 
   const isSearching = searchQuery.trim().length > 0;
 
-  const filtered = FRIENDS_MOCK.filter((f) => {
+  const filtered = friends.filter((f) => {
     const q = searchQuery.toLowerCase();
     return f.name.toLowerCase().includes(q) || f.handle.toLowerCase().includes(q);
   });
@@ -42,7 +68,7 @@ function FriendsSheet({ onClose }: { onClose: () => void }) {
     a.name.localeCompare(b.name, 'ja', { sensitivity: 'base' })
   );
 
-  const grouped = sorted.reduce<Record<string, typeof FRIENDS_MOCK>>((acc, f) => {
+  const grouped = sorted.reduce<Record<string, Friend[]>>((acc, f) => {
     const key = getJaGroup(f.name);
     if (!acc[key]) acc[key] = [];
     acc[key].push(f);
@@ -78,7 +104,7 @@ function FriendsSheet({ onClose }: { onClose: () => void }) {
           <div className="w-8 h-1 rounded-full mx-auto mb-3" style={{ background: 'var(--surface-2)' }} />
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold" style={{ color: 'var(--foreground)' }}>
-              友達 ({FRIENDS_MOCK.length})
+              {t('friends')} ({friends.length})
             </h2>
             <button
               onClick={onClose}
@@ -103,7 +129,7 @@ function FriendsSheet({ onClose }: { onClose: () => void }) {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="検索..."
+              placeholder={tc('search')}
               className="flex-1 text-sm outline-none bg-transparent"
               style={{ color: 'var(--foreground)' }}
             />
@@ -121,11 +147,15 @@ function FriendsSheet({ onClose }: { onClose: () => void }) {
         <div className="flex flex-1 min-h-0 relative">
           {/* 友達リスト */}
           <div className="overflow-y-auto flex-1 pr-6 pb-8">
-            {isSearching ? (
+            {loading ? (
+              <div className="py-12 text-center">
+                <p className="text-sm" style={{ color: 'var(--muted)' }}>Loading...</p>
+              </div>
+            ) : isSearching ? (
               sorted.map((f) => (
                 <div key={f.id} className="flex items-center gap-3 px-5 py-3 cursor-pointer active:opacity-70"
                   style={{ borderBottom: '1px solid var(--surface-2)' }}
-                  onClick={() => router.push(`/profile/${f.name}`)}>
+                  onClick={() => router.push(`/profile/${f.username}`)}>
                   <div className="w-11 h-11 rounded-full flex items-center justify-center text-xl flex-shrink-0"
                     style={{ background: 'var(--surface-2)' }}>
                     {f.avatar}
@@ -135,7 +165,7 @@ function FriendsSheet({ onClose }: { onClose: () => void }) {
                     <p className="text-xs" style={{ color: 'var(--muted)' }}>{f.handle}</p>
                   </div>
                   <button
-                    onClick={(e) => { e.stopPropagation(); router.push(`/chat/${f.name}`); }}
+                    onClick={(e) => { e.stopPropagation(); router.push(`/chat/${f.id}`); }}
                     className="w-8 h-8 flex items-center justify-center rounded-full active:scale-90 transition-transform flex-shrink-0"
                     style={{ background: 'var(--surface-2)' }}
                   >
@@ -154,7 +184,7 @@ function FriendsSheet({ onClose }: { onClose: () => void }) {
                   {grouped[section].map((f) => (
                     <div key={f.id} className="flex items-center gap-3 px-5 py-3 cursor-pointer active:opacity-70"
                       style={{ borderBottom: '1px solid var(--surface-2)' }}
-                      onClick={() => router.push(`/profile/${f.name}`)}>
+                      onClick={() => router.push(`/profile/${f.username}`)}>
                       <div className="w-11 h-11 rounded-full flex items-center justify-center text-xl flex-shrink-0"
                         style={{ background: 'var(--surface-2)' }}>
                         {f.avatar}
@@ -164,7 +194,7 @@ function FriendsSheet({ onClose }: { onClose: () => void }) {
                         <p className="text-xs" style={{ color: 'var(--muted)' }}>{f.handle}</p>
                       </div>
                       <button
-                        onClick={(e) => { e.stopPropagation(); router.push(`/chat/${f.name}`); }}
+                        onClick={(e) => { e.stopPropagation(); router.push(`/chat/${f.id}`); }}
                         className="w-8 h-8 flex items-center justify-center rounded-full active:scale-90 transition-transform flex-shrink-0"
                         style={{ background: 'var(--surface-2)' }}
                       >
@@ -178,7 +208,7 @@ function FriendsSheet({ onClose }: { onClose: () => void }) {
               ))
             )}
             {sorted.length === 0 && (
-              <p className="text-center text-sm py-8" style={{ color: 'var(--muted)' }}>見つかりません</p>
+              <p className="text-center text-sm py-8" style={{ color: 'var(--muted)' }}>{t('notFound')}</p>
             )}
           </div>
 
@@ -215,23 +245,120 @@ const SUGGEST_TAGS = [
 
 // ── HashtagManagerModal ───────────────────────────────────────────
 
-function HashtagManagerModal({ tags, setTags, onClose }: {
-  tags: string[];
-  setTags: (v: string[]) => void;
+function HashtagManagerModal({ onClose }: {
   onClose: () => void;
 }) {
+  const t = useTranslations('profile');
+  const tc = useTranslations('common');
+  const { user, followedHashtags, followHashtag, unfollowHashtag } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
+  type OwnerPhase = 'none' | 'owner_screen' | 'animating' | 'owned';
+  const [ownerPhase, setOwnerPhase] = useState<OwnerPhase>('none');
+  const [ownerTag, setOwnerTag] = useState('');
 
+  const tags        = followedHashtags;
   const query       = searchQuery.replace(/^#/, '').trim();
   const suggestions = query === '' ? SUGGEST_TAGS : SUGGEST_TAGS.filter((t) => t.includes(query));
   const customTag   = query.length > 0 ? `#${query}` : null;
   const showCustom  = customTag !== null && !SUGGEST_TAGS.includes(customTag) && !tags.includes(customTag);
 
-  const addTag = (tag: string) => {
+  const addTag = async (tag: string) => {
     const n = tag.startsWith('#') ? tag : `#${tag}`;
-    if (n.length > 1 && !tags.includes(n)) { setTags([...tags, n]); setSearchQuery(''); }
+    if (n.length <= 1 || tags.includes(n)) return;
+
+    // フォロワー0・既存タグなしならオーナー画面を表示
+    const { count } = await supabase
+      .from('follows')
+      .select('*', { count: 'exact', head: true })
+      .eq('type', 'hashtag')
+      .eq('tag', n);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: engRow } = await (supabase.from('hashtag_engagements') as any)
+      .select('tag').eq('tag', n).limit(1).maybeSingle();
+
+    if ((count ?? 0) === 0 && engRow === null) {
+      setOwnerTag(n);
+      setOwnerPhase('owner_screen');
+    } else {
+      await followHashtag(n);
+
+      // タグ追加後にフォロワー数をチェック（自分が最初なら is_owner を立てる）
+      const { count: postFollowCount } = await supabase
+        .from('follows')
+        .select('*', { count: 'exact', head: true })
+        .eq('type', 'hashtag')
+        .eq('tag', n);
+      if ((postFollowCount ?? 0) <= 1) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (supabase.from('hashtag_engagements') as any).upsert({
+          user_id:        user?.id,
+          tag:            n,
+          is_owner:       true,
+          post_count:     0,
+          reaction_count: 0,
+        }, { onConflict: 'user_id,tag' });
+      }
+    }
+    setSearchQuery('');
   };
-  const removeTag = (tag: string) => setTags(tags.filter((t) => t !== tag));
+
+  const handleBecomeOwner = async () => {
+    if (!user) return;
+    await followHashtag(ownerTag);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('hashtag_engagements') as any).upsert({
+      user_id:        user.id,
+      tag:            ownerTag,
+      is_owner:       true,
+      post_count:     0,
+      reaction_count: 0,
+    }, { onConflict: 'user_id,tag' });
+    setOwnerPhase('animating');
+    setTimeout(() => setOwnerPhase('owned'), 1500);
+  };
+
+  const removeTag = (tag: string) => unfollowHashtag(tag);
+
+  if (ownerPhase === 'owner_screen' || ownerPhase === 'animating') {
+    return (
+      <>
+        <div
+          className="absolute inset-0 z-50"
+          style={{ background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(4px)' }}
+          onClick={ownerPhase === 'owner_screen' ? () => setOwnerPhase('none') : undefined}
+        />
+        <div
+          className="absolute bottom-0 left-0 right-0 z-50 sheet-animate flex flex-col"
+          style={{ background: 'var(--surface)', borderRadius: '16px 16px 0 0', maxHeight: 'calc(100% - 80px)', overflowY: 'auto' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {ownerPhase === 'owner_screen' ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-6">
+              <span style={{ border: '1px solid white', borderRadius: '9999px', padding: '4px 16px', fontSize: '1rem', color: 'white' }}>
+                {ownerTag}
+              </span>
+              <p className="text-white text-xl font-bold">最初のオーナーになろう</p>
+              <p className="text-gray-400 text-sm text-center px-8">
+                このタグをフォローして、コミュニティの最初のメンバーになれます
+              </p>
+              <p className="text-gray-500 text-sm">0 Following</p>
+              <button
+                onClick={handleBecomeOwner}
+                className="bg-white text-black font-bold px-8 py-3 rounded-full text-sm"
+              >
+                オーナーになる
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-20 gap-4">
+              <p className="text-white text-2xl font-bold animate-pulse">🎉</p>
+              <p className="text-white text-lg font-bold">オーナーになりました！</p>
+            </div>
+          )}
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -255,7 +382,7 @@ function HashtagManagerModal({ tags, setTags, onClose }: {
         </div>
         <div className="flex items-center justify-between px-5 pb-4 flex-shrink-0"
           style={{ borderBottom: '1px solid var(--surface-2)' }}>
-          <h2 className="font-bold text-base" style={{ color: 'var(--foreground)' }}>フォロー中のハッシュタグ</h2>
+          <h2 className="font-bold text-base" style={{ color: 'var(--foreground)' }}>{t('followingHashtags')}</h2>
           <button
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-full text-lg active:scale-90 transition-transform"
@@ -272,7 +399,7 @@ function HashtagManagerModal({ tags, setTags, onClose }: {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && query.length > 0) addTag(query); }}
-              placeholder="キーワードで検索・追加..."
+              placeholder={tc('search')}
               className="w-full pl-7 pr-3 py-2.5 rounded-xl text-sm outline-none"
               style={{ background: 'var(--surface-2)', borderColor: 'rgba(230,57,70,0.4)', border: '1px solid', color: 'var(--foreground)' }}
             />
@@ -299,8 +426,8 @@ function HashtagManagerModal({ tags, setTags, onClose }: {
         <div className="px-5 pt-4 pb-10">
           {tags.length === 0 ? (
             <div className="py-12 text-center">
-              <p className="text-sm" style={{ color: 'var(--muted)' }}>フォロー中のタグはありません</p>
-              <p className="text-xs mt-1" style={{ color: 'rgba(136,136,170,0.5)' }}>上の検索バーからタグを追加してください</p>
+              <p className="text-sm" style={{ color: 'var(--muted)' }}>{t('noTags')}</p>
+              <p className="text-xs mt-1" style={{ color: 'rgba(136,136,170,0.5)' }}>{t('addTagHint')}</p>
             </div>
           ) : (
             <div className="flex flex-col gap-2">
@@ -333,8 +460,6 @@ type TabKey = 'posts' | 'memory';
 // ── カレンダー ────────────────────────────────────────────────────
 const DOW_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
-// ── モック友達数 ──────────────────────────────────────────────────
-const FRIENDS_COUNT = FRIENDS_MOCK.length;
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // プロフィール編集モーダル
@@ -342,36 +467,39 @@ const FRIENDS_COUNT = FRIENDS_MOCK.length;
 
 const AVATAR_OPTIONS = ['✨', '🌸', '🎵', '🎨', '📸', '🌙', '☕', '🎸', '🌊', '💻', '🖋️', '🎞️'];
 
-const CARD_COLOR_PRESETS = [
-  { label: 'デフォルト', value: '' },
-  { label: '紫',         value: '#2D1B69' },
-  { label: '赤',         value: '#3D0000' },
-  { label: '青',         value: '#0D1F3C' },
-  { label: '緑',         value: '#0D2D1A' },
-  { label: 'ピンク',     value: '#3D0D1F' },
-  { label: '透明',       value: 'transparent' },
-];
 
-const REACTION_EMOJI_OPTIONS = ['👍', '❤️', '🔥', '✨', '👏', '😭', '🎵', '⚡'];
+async function uploadImage(file: File, bucket: string, userId: string): Promise<string | null> {
+  const ext = file.name.split('.').pop()
+  const path = `${userId}/${Date.now()}.${ext}`
+  const { error } = await supabase.storage
+    .from(bucket)
+    .upload(path, file, { upsert: true })
+  if (error) {
+    console.error('upload error:', error)
+    return null
+  }
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path)
+  return data.publicUrl
+}
 
 function EditModal({
-  name, handle, bio, avatar,
+  name, handle, bio, avatar, avatarUrl: initAvatarUrl, headerUrl: initHeaderUrl, user,
   onSave, onClose,
 }: {
   name: string; handle: string; bio: string; avatar: string;
-  onSave: (d: { name: string; handle: string; bio: string; avatar: string }) => void;
+  avatarUrl: string; headerUrl: string;
+  user: { id: string } | null;
+  onSave: (d: { name: string; handle: string; bio: string; avatar: string; avatarUrl: string; headerUrl: string }) => void;
   onClose: () => void;
 }) {
+  const t = useTranslations('profile');
+  const tc = useTranslations('common');
   const [dName,          setDName]          = useState(name);
   const [dHandle,        setDHandle]        = useState(handle);
   const [dBio,           setDBio]           = useState(bio);
   const [dAvatar,        setDAvatar]        = useState(avatar);
-  const [dCardColor,     setDCardColor]     = useState<string>(() =>
-    typeof window !== 'undefined' ? (localStorage.getItem('sync_card_color') ?? '') : ''
-  );
-  const [dReactionEmoji, setDReactionEmoji] = useState<string>(() =>
-    typeof window !== 'undefined' ? (localStorage.getItem('sync_reaction_emoji') ?? '👍') : '👍'
-  );
+  const [avatarUrl,      setAvatarUrl]      = useState(initAvatarUrl);
+  const [headerUrl,      setHeaderUrl]      = useState(initHeaderUrl);
 
   return (
     <>
@@ -407,25 +535,101 @@ function EditModal({
             style={{ color: 'var(--muted)' }}
             onClick={onClose}
           >
-            キャンセル
+            {tc('cancel')}
           </button>
           <p className="text-sm font-bold" style={{ color: 'var(--foreground)' }}>
-            プロフィールを編集
+            {t('editTitle')}
           </p>
           <button
             className="text-sm font-bold active:opacity-60 transition-opacity"
             style={{ color: 'var(--brand)' }}
-            onClick={() => onSave({ name: dName, handle: dHandle, bio: dBio, avatar: dAvatar })}
+            onClick={() => onSave({ name: dName, handle: dHandle, bio: dBio, avatar: dAvatar, avatarUrl, headerUrl })}
           >
-            保存
+            {tc('save')}
           </button>
         </div>
 
         <div className="px-5 py-5 flex flex-col gap-5">
+          {/* アイコン画像 */}
+          <div style={{ marginBottom: 4 }}>
+            <p style={{ color: '#9ca3af', fontSize: 12, marginBottom: 8 }}>アイコン画像</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{
+                width: 64, height: 64, borderRadius: '50%',
+                overflow: 'hidden', background: '#222',
+                border: '2px solid #444', flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                {avatarUrl ? (
+                  <img src={avatarUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="avatar" />
+                ) : (
+                  <span style={{ fontSize: 28 }}>{dAvatar}</span>
+                )}
+              </div>
+              <label style={{
+                background: '#333', color: '#fff', padding: '8px 16px',
+                borderRadius: 8, fontSize: 13, cursor: 'pointer', border: '1px solid #444'
+              }}>
+                写真を選択
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file || !user) return
+                    const url = await uploadImage(file, 'avatars', user.id)
+                    if (url) setAvatarUrl(url)
+                  }}
+                />
+              </label>
+              {avatarUrl && (
+                <button
+                  onClick={() => setAvatarUrl('')}
+                  style={{ color: '#9ca3af', fontSize: 12, background: 'none', border: 'none', cursor: 'pointer' }}
+                >
+                  削除
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* ヘッダー画像 */}
+          <div style={{ marginBottom: 4 }}>
+            <p style={{ color: '#9ca3af', fontSize: 12, marginBottom: 8 }}>ヘッダー画像</p>
+            <div style={{ position: 'relative', width: '100%', height: 80, background: '#222', borderRadius: 8, overflow: 'hidden', border: '1px solid #444' }}>
+              {headerUrl ? (
+                <img src={headerUrl} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="header" />
+              ) : (
+                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666', fontSize: 13 }}>
+                  ヘッダー画像なし
+                </div>
+              )}
+              <label style={{
+                position: 'absolute', bottom: 8, right: 8,
+                background: 'rgba(0,0,0,0.7)', color: '#fff',
+                padding: '4px 12px', borderRadius: 6, fontSize: 12, cursor: 'pointer'
+              }}>
+                写真を選択
+                <input
+                  type="file"
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file || !user) return
+                    const url = await uploadImage(file, 'headers', user.id)
+                    if (url) setHeaderUrl(url)
+                  }}
+                />
+              </label>
+            </div>
+          </div>
+
           {/* アバター選択 */}
           <div>
             <p className="text-xs font-semibold mb-3" style={{ color: 'var(--muted)' }}>
-              アイコン
+              {t('icon')}
             </p>
             <div className="flex flex-wrap gap-2">
               {AVATAR_OPTIONS.map((av) => (
@@ -446,7 +650,7 @@ function EditModal({
 
           {/* 名前 */}
           <div>
-            <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--muted)' }}>名前</p>
+            <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--muted)' }}>{t('name')}</p>
             <input
               value={dName}
               onChange={(e) => setDName(e.target.value)}
@@ -463,7 +667,7 @@ function EditModal({
 
           {/* ハンドル */}
           <div>
-            <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--muted)' }}>ハンドル</p>
+            <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--muted)' }}>{t('handle')}</p>
             <input
               value={dHandle}
               onChange={(e) => setDHandle(e.target.value)}
@@ -480,7 +684,7 @@ function EditModal({
 
           {/* 自己紹介 */}
           <div>
-            <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--muted)' }}>自己紹介</p>
+            <p className="text-xs font-semibold mb-1.5" style={{ color: 'var(--muted)' }}>{t('bio')}</p>
             <textarea
               value={dBio}
               onChange={(e) => setDBio(e.target.value)}
@@ -496,56 +700,6 @@ function EditModal({
             />
           </div>
 
-          {/* 投稿カードの色 */}
-          <div>
-            <p className="text-xs font-semibold mb-3" style={{ color: 'var(--muted)' }}>
-              自分の投稿カード色
-            </p>
-            <div className="flex flex-wrap gap-3">
-              {CARD_COLOR_PRESETS.map(({ label, value }) => (
-                <button
-                  key={value || 'default'}
-                  onClick={() => { setDCardColor(value); localStorage.setItem('sync_card_color', value); }}
-                  className="flex flex-col items-center gap-1 active:scale-90 transition-transform"
-                >
-                  <div
-                    style={{
-                      width: 40, height: 40,
-                      borderRadius: 12,
-                      background: value || 'var(--surface)',
-                      border: dCardColor === value
-                        ? '2px solid var(--brand)'
-                        : '2px solid var(--surface-2)',
-                      boxSizing: 'border-box',
-                    }}
-                  />
-                  <span style={{ fontSize: 10, color: 'var(--muted)' }}>{label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* 即時リアクション絵文字 */}
-          <div>
-            <p className="text-xs font-semibold mb-3" style={{ color: 'var(--muted)' }}>
-              即時リアクション絵文字
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {REACTION_EMOJI_OPTIONS.map((emoji) => (
-                <button
-                  key={emoji}
-                  onClick={() => { setDReactionEmoji(emoji); localStorage.setItem('sync_reaction_emoji', emoji); }}
-                  className="w-11 h-11 rounded-full flex items-center justify-center text-2xl transition-all active:scale-90"
-                  style={{
-                    background: dReactionEmoji === emoji ? 'rgba(255,26,26,0.15)' : 'var(--surface-2)',
-                    border: dReactionEmoji === emoji ? '2px solid var(--brand)' : '2px solid transparent',
-                  }}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         <div className="h-8" />
@@ -559,13 +713,16 @@ function EditModal({
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export default function ProfilePage() {
+  const t = useTranslations('profile');
   const router = useRouter();
+  const { user, refreshProfile, followedHashtags } = useAuth();
 
   const [name,      setName]      = useState(CURRENT_USER.name);
   const [handle,    setHandle]    = useState(CURRENT_USER.handle);
   const [bio,       setBio]       = useState(CURRENT_USER.bio);
   const [avatar,    setAvatar]    = useState(CURRENT_USER.avatar);
-  const [tags,      setTags]      = useState<string[]>(CURRENT_USER.hashtags);
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [headerUrl, setHeaderUrl] = useState('');
   const [editing,        setEditing]        = useState(false);
   const [activeTab,      setActiveTab]      = useState<TabKey>('posts');
   const [showFriends,    setShowFriends]    = useState(false);
@@ -577,27 +734,144 @@ export default function ProfilePage() {
     return localStorage.getItem('sync_hashtag_color') || '';
   });
 
-  function handleSave(d: { name: string; handle: string; bio: string; avatar: string }) {
-    setName(d.name);
-    setHandle(d.handle);
-    setBio(d.bio);
-    setAvatar(d.avatar);
-    setEditing(false);
+  // ── 投稿リスト ─────────────────────────────────────────────────
+  const [myPosts,       setMyPosts]       = useState<Post[]>([]);
+  const [postsLoading,  setPostsLoading]  = useState(true);
+
+  // ── 友達リスト ─────────────────────────────────────────────────
+  const [friends,       setFriends]       = useState<Friend[]>([]);
+  const [friendsLoading, setFriendsLoading] = useState(true);
+
+  // Supabase からプロフィールを初期読み込み
+  useEffect(() => {
+    if (!user) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
+      .from('profiles')
+      .select('display_name, username, bio, avatar_url, header_url')
+      .eq('id', user.id)
+      .single()
+      .then(({ data }: { data: any }) => {
+        if (data) {
+          setName(data.display_name ?? '');
+          setHandle('@' + (data.username ?? ''));
+          setBio(data.bio ?? '');
+          setAvatar(data.avatar_url ?? '');
+          setAvatarUrl(data.avatar_url ?? '');
+          setHeaderUrl(data.header_url ?? '');
+        }
+      });
+  }, [user]);
+
+  // Supabase から投稿を取得
+  useEffect(() => {
+    if (!user) return;
+    setPostsLoading(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
+      .from('posts')
+      .select('id, content, hashtags, color, is_mutual, expires_at, created_at')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .then(({ data, error }: { data: any[]; error: any }) => {
+        if (error) { console.error('投稿取得エラー:', error); }
+        if (data) {
+          const mapped: Post[] = data.map((row: any) => ({
+            id:        row.id,
+            avatar:    avatar || CURRENT_USER.avatar,
+            handle:    handle || CURRENT_USER.handle,
+            name:      name   || CURRENT_USER.name,
+            content:   row.content,
+            hashtags:  row.hashtags ?? [],
+            time:      getRelativeTime(row.created_at),
+            createdAt: new Date(row.created_at).getTime(),
+            expiresAt: row.expires_at
+              ? new Date(row.expires_at).getTime()
+              : Date.now() + 999 * 24 * 60 * 60 * 1000,
+            isMutual:  row.is_mutual,
+          }));
+          setMyPosts(mapped);
+        }
+        setPostsLoading(false);
+      });
+  // avatar/handle/name が確定してから再実行するために依存に含める
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, avatar, handle, name]);
+
+  // Supabase から友達（フォロー中）を取得
+  useEffect(() => {
+    if (!user) return;
+    setFriendsLoading(true);
+    supabase
+      .from('follows')
+      .select(`
+        following_id,
+        profile:profiles!follows_following_id_fkey (
+          id, username, display_name, avatar_url
+        )
+      `)
+      .eq('follower_id', user.id)
+      .eq('type', 'user')
+      .eq('status', 'accepted')
+      .then(({ data, error }) => {
+        if (error) { console.error('友達取得エラー:', error); }
+        if (data) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const mapped: Friend[] = (data as any[])
+            .filter(row => row.profile)
+            .map(row => ({
+              id:       row.profile.id,
+              name:     row.profile.display_name ?? '',
+              handle:   '@' + (row.profile.username ?? ''),
+              username: row.profile.username ?? '',
+              avatar:   row.profile.avatar_url ?? '👤',
+            }))
+            .sort((a, b) => a.name.localeCompare(b.name, 'ja', { sensitivity: 'base' }));
+          setFriends(mapped);
+        }
+        setFriendsLoading(false);
+      });
+  }, [user]);
+
+  async function handleSave(d: { name: string; handle: string; bio: string; avatar: string; avatarUrl: string; headerUrl: string }) {
+    if (!user) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase as any).from('profiles').update({
+      display_name: d.name,
+      username:     d.handle.replace('@', ''),
+      bio:          d.bio,
+      avatar_url:   d.avatarUrl || d.avatar,
+      header_url:   d.headerUrl,
+    }).eq('id', user.id);
+
+    if (!error) {
+      setName(d.name);
+      setHandle(d.handle);
+      setBio(d.bio);
+      setAvatar(d.avatarUrl || d.avatar);
+      setAvatarUrl(d.avatarUrl);
+      setHeaderUrl(d.headerUrl);
+      setEditing(false);
+      await refreshProfile();
+    } else {
+      console.error('プロフィール更新エラー:', error);
+      alert('保存に失敗しました。もう一度お試しください。');
+    }
   }
 
   function handleTogglePin(id: string) {
     if (pinnedIds.includes(id)) {
       setPinnedIds(prev => prev.filter(x => x !== id));
     } else if (pinnedIds.length >= 3) {
-      setPinToast('ピンは最大3つまでです');
+      setPinToast(t('pinMax'));
       setTimeout(() => setPinToast(''), 2500);
     } else {
       setPinnedIds(prev => [...prev, id]);
     }
   }
 
-  const pinnedPosts   = MY_POSTS.filter(p => pinnedIds.includes(p.id));
-  const unpinnedPosts = MY_POSTS.filter(p => !pinnedIds.includes(p.id));
+  const pinnedPosts   = myPosts.filter(p => pinnedIds.includes(p.id));
+  const unpinnedPosts = myPosts.filter(p => !pinnedIds.includes(p.id));
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-y-auto" style={{ background: 'var(--background)' }}>
@@ -668,7 +942,7 @@ export default function ProfilePage() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4" style={{ color: 'var(--muted)' }}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
             </svg>
-            友達（{FRIENDS_COUNT}）
+            {t('friends')}（{friendsLoading ? '…' : friends.length}）
           </button>
           <button
             onClick={() => setEditing(true)}
@@ -679,7 +953,7 @@ export default function ProfilePage() {
               color: 'var(--foreground)',
             }}
           >
-            プロフィールを編集
+            {t('editProfile')}
           </button>
         </div>
 
@@ -704,12 +978,12 @@ export default function ProfilePage() {
             style={{ color: '#E63946', background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
           >
             <span>🏷</span>
-            <span>フォロー中</span>
+            <span>{t('followingHashtags')}</span>
             <span
               className="px-1.5 py-0.5 rounded-full text-white text-[10px] font-bold"
               style={{ background: '#E63946' }}
             >
-              {tags.length}
+              {followedHashtags.length}
             </span>
           </button>
         </div>
@@ -729,6 +1003,7 @@ export default function ProfilePage() {
         {/* 投稿タブ */}
         <button
           onClick={() => setActiveTab('posts')}
+          aria-label={t('posts')}
           className="flex-1 py-3 flex items-center justify-center transition-all active:opacity-70 relative"
           style={{ color: activeTab === 'posts' ? '#7C6FE8' : 'var(--muted)' }}
         >
@@ -743,6 +1018,7 @@ export default function ProfilePage() {
         {/* メモリータブ */}
         <button
           onClick={() => setActiveTab('memory')}
+          aria-label={t('memory')}
           className="flex-1 py-3 flex items-center justify-center transition-all active:opacity-70 relative"
           style={{ color: activeTab === 'memory' ? '#7C6FE8' : 'var(--muted)' }}
         >
@@ -757,6 +1033,11 @@ export default function ProfilePage() {
 
       {/* ── 投稿タブ ─────────────────────────────────────────────── */}
       {activeTab === 'posts' && (
+        postsLoading ? (
+          <div className="py-16 text-center">
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>Loading...</p>
+          </div>
+        ) : (
         <div className="flex flex-col pb-10">
           {/* ピン済み */}
           <div className="px-4 pt-4 pb-1">
@@ -764,7 +1045,7 @@ export default function ProfilePage() {
               <span>📌</span> Pinned ({pinnedPosts.length}/3)
             </p>
             {pinnedPosts.length === 0 ? (
-              <p className="text-sm py-2" style={{ color: 'var(--muted)' }}>まだピンした投稿がありません</p>
+              <p className="text-sm py-2" style={{ color: 'var(--muted)' }}>{t('noPins')}</p>
             ) : (
               <div style={{ borderTop: '1px solid var(--surface-2)' }}>
                 {pinnedPosts.map(post => (
@@ -788,6 +1069,7 @@ export default function ProfilePage() {
             </div>
           )}
         </div>
+        )
       )}
 
       {/* ── メモリーカレンダータブ ────────────────────────────────── */}
@@ -812,19 +1094,24 @@ export default function ProfilePage() {
       {editing && (
         <EditModal
           name={name} handle={handle} bio={bio} avatar={avatar}
+          avatarUrl={avatarUrl} headerUrl={headerUrl} user={user}
           onSave={handleSave}
           onClose={() => setEditing(false)}
         />
       )}
 
       {/* ── 友達ボトムシート ──────────────────────────────────────── */}
-      {showFriends && <FriendsSheet onClose={() => setShowFriends(false)} />}
+      {showFriends && (
+        <FriendsSheet
+          onClose={() => setShowFriends(false)}
+          friends={friends}
+          loading={friendsLoading}
+        />
+      )}
 
       {/* ── ハッシュタグ管理モーダル ──────────────────────────────── */}
       {showTagManager && (
         <HashtagManagerModal
-          tags={tags}
-          setTags={setTags}
           onClose={() => setShowTagManager(false)}
         />
       )}
@@ -840,6 +1127,9 @@ function ProfilePostRow({ post, isPinned, onTogglePin, hashtagBorderColor }: {
   onTogglePin?: (id: string) => void;
   hashtagBorderColor?: string;
 }) {
+  const t = useTranslations('profile');
+  const router = useRouter();
+  const hashtagColor = typeof window !== 'undefined' ? localStorage.getItem('sync_hashtag_color') || '' : '';
   return (
     <div
       className="flex gap-3 px-4 py-4 active:opacity-80 transition-opacity cursor-pointer"
@@ -871,7 +1161,7 @@ function ProfilePostRow({ post, isPinned, onTogglePin, hashtagBorderColor }: {
                 fontSize: 13,
                 opacity: isPinned ? 1 : 0.35,
               }}
-              title={isPinned ? 'ピンを外す' : 'ピンする'}
+              title={isPinned ? t('pinRemove') : t('pinAdd')}
             >
               📌
             </button>
@@ -881,25 +1171,37 @@ function ProfilePostRow({ post, isPinned, onTogglePin, hashtagBorderColor }: {
           className="text-sm leading-relaxed whitespace-pre-line mb-2"
           style={{ color: 'rgba(255,255,255,0.82)' }}
         >
-          {post.content}
+          {post.content.replace(/#\S+/g, '').trim()}
         </p>
         <div className="flex flex-wrap gap-1.5">
           {post.hashtags.map((tag) => (
-            <span
+            <button
               key={tag}
-              className="text-xs px-2 py-0.5 rounded-full"
-              style={hashtagBorderColor ? {
+              onClick={(e) => { e.stopPropagation(); router.push(`/search?tag=${encodeURIComponent(tag.replace(/^#/, ''))}`); }}
+              style={hashtagColor ? {
                 background: 'transparent',
-                border: `1.5px solid ${hashtagBorderColor}`,
+                border: `1.5px solid ${hashtagColor}`,
                 color: '#ffffff',
+                padding: '2px 10px',
+                borderRadius: 9999,
+                fontSize: 12,
+                fontWeight: 600,
+                display: 'inline-block',
+                cursor: 'pointer',
               } : {
-                background: `linear-gradient(var(--surface), var(--surface)) padding-box, ${RAINBOW} border-box`,
+                background: 'linear-gradient(var(--surface), var(--surface)) padding-box, linear-gradient(90deg,#FF6B6B,#FFD93D,#6BCB77,#4D96FF,#9B59B6) border-box',
                 border: '1.5px solid transparent',
                 color: '#ffffff',
+                padding: '2px 10px',
+                borderRadius: 9999,
+                fontSize: 12,
+                fontWeight: 600,
+                display: 'inline-block',
+                cursor: 'pointer',
               }}
             >
               {tag}
-            </span>
+            </button>
           ))}
         </div>
       </div>
@@ -908,10 +1210,11 @@ function ProfilePostRow({ post, isPinned, onTogglePin, hashtagBorderColor }: {
 }
 
 function EmptyMsg({ children }: { children?: React.ReactNode }) {
+  const t = useTranslations('profile');
   return (
     <div className="flex items-center justify-center py-16">
       <p className="text-sm" style={{ color: 'var(--muted)' }}>
-        {children ?? 'まだ投稿がありません'}
+        {children ?? t('noPosts')}
       </p>
     </div>
   );

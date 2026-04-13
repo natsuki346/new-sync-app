@@ -1,8 +1,11 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { CONVERSATIONS, type Conversation } from '@/lib/mockData';
+import { useTranslations } from 'next-intl';
+import { type Conversation } from '@/lib/mockData';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
 
 const RAINBOW = 'linear-gradient(to right, #7C6FE8 0%, #D455A8 18%, #E84040 36%, #E8A020 52%, #48C468 68%, #2890D8 84%, #7C6FE8 100%)'
 
@@ -11,30 +14,139 @@ const RAINBOW = 'linear-gradient(to right, #7C6FE8 0%, #D455A8 18%, #E84040 36%,
 type Filter    = 'all' | 'friends' | 'groups';
 type SheetMode = 'menu' | 'new-dm' | 'new-group' | 'bluetooth';
 
-// ── Friends マスタ ────────────────────────────────────────────────
+type Friend = {
+  id:     string;
+  avatar: string;
+  name:   string;
+  handle: string;
+};
 
-const FRIENDS_LIST = [
-  { id: 'u1', avatar: '🌸', name: 'yuki',  handle: '@yuki'  },
-  { id: 'u2', avatar: '🎨', name: 'kai',   handle: '@kai'   },
-  { id: 'u3', avatar: '🎵', name: 'mio',   handle: '@mio'   },
-  { id: 'u4', avatar: '📸', name: 'ren',   handle: '@ren'   },
-  { id: 'u5', avatar: '🎞️', name: 'tomo',  handle: '@tomo'  },
-  { id: 'u6', avatar: '☕', name: 'nagi',  handle: '@nagi'  },
-  { id: 'u7', avatar: '💻', name: 'mai',   handle: '@mai'   },
-  { id: 'u8', avatar: '🌙', name: 'luna',  handle: '@luna'  },
-];
+// ── 時刻フォーマット ──────────────────────────────────────────────
+
+function fmtTime(iso: string): string {
+  const d    = new Date(iso);
+  const now  = new Date();
+  const diff = now.getTime() - d.getTime();
+  if (diff < 60_000)    return 'Now';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`;
+  if (diff < 86_400_000)
+    return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
 
 // ── メインコンポーネント ──────────────────────────────────────────
 
 export default function ChatPage() {
   const router = useRouter();
+  const t = useTranslations('chat');
+  const { user } = useAuth();
 
   const [filter,        setFilter]        = useState<Filter>('all');
   const [search,        setSearch]        = useState('');
   const [sheetMode,     setSheetMode]     = useState<SheetMode | null>(null);
   const [selectedIds,   setSelectedIds]   = useState<string[]>([]);
   const [friendSearch,  setFriendSearch]  = useState('');
-  const [conversations, setConversations] = useState<Conversation[]>(CONVERSATIONS);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loading,       setLoading]       = useState(true);
+  const [friends,       setFriends]       = useState<Friend[]>([]);
+
+  // ── 会話リスト取得 ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    setLoading(true);
+
+    (async () => {
+      const { data, error } = await (supabase as any)
+        .from('conversations')
+        .select(`
+          id, type, name, created_at,
+          conversation_members!inner (
+            user_id,
+            profiles (id, username, display_name, avatar_url)
+          ),
+          messages (
+            content, created_at, user_id
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (cancelled) return;
+      if (error) { console.error('会話取得エラー:', error); setLoading(false); return; }
+
+      const rows = (data ?? []) as any[];
+      const convs: Conversation[] = rows.map((c: any) => {
+        const members: any[] = c.conversation_members ?? [];
+        const msgs: any[] = (c.messages ?? []).sort(
+          (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+        );
+        const lastMsg = msgs[0];
+
+        if (c.type === 'dm') {
+          const other = members.find((m: any) => m.user_id !== user.id);
+          const prof  = other?.profiles;
+          return {
+            id:      c.id,
+            avatar:  prof?.avatar_url   ?? '👤',
+            name:    prof?.display_name ?? 'Unknown',
+            handle:  prof ? `@${prof.username}` : undefined,
+            preview: lastMsg?.content ?? '',
+            time:    lastMsg ? fmtTime(lastMsg.created_at) : fmtTime(c.created_at),
+            unread:  false,
+            isGroup: false,
+          };
+        } else {
+          const memberAvatars = members.map((m: any) => m.profiles?.avatar_url ?? '👤');
+          return {
+            id:           c.id,
+            avatar:       memberAvatars[0] ?? '👥',
+            name:         c.name ?? 'Group',
+            preview:      lastMsg?.content ?? '',
+            time:         lastMsg ? fmtTime(lastMsg.created_at) : fmtTime(c.created_at),
+            unread:       false,
+            isGroup:      true,
+            memberAvatars,
+          };
+        }
+      });
+
+      if (!cancelled) {
+        setConversations(convs);
+        setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  // ── フレンドリスト取得 ──────────────────────────────────────────
+  useEffect(() => {
+    if (!user?.id) return;
+    (supabase as any)
+      .from('follows')
+      .select(`
+        following_id,
+        profiles!follows_following_id_fkey (
+          id, username, display_name, avatar_url
+        )
+      `)
+      .eq('follower_id', user.id)
+      .eq('type', 'user')
+      .eq('status', 'accepted')
+      .then(({ data, error }: any) => {
+        if (error) { console.error('フレンド取得エラー:', error); return; }
+        const list: Friend[] = (data ?? []).map((row: any) => {
+          const p = row.profiles;
+          return {
+            id:     p?.id ?? row.following_id,
+            avatar: p?.avatar_url   ?? '👤',
+            name:   p?.display_name ?? p?.username ?? 'Unknown',
+            handle: `@${p?.username ?? ''}`,
+          };
+        });
+        setFriends(list);
+      });
+  }, [user?.id]);
 
   // ── 検索フィルター ──────────────────────────────────────────────
   const q = search.trim().toLowerCase();
@@ -56,8 +168,8 @@ export default function ChatPage() {
 
   // ── Friends 検索（シート内） ────────────────────────────────────
   const fq = friendSearch.trim().toLowerCase();
-  const visibleFriends = FRIENDS_LIST.filter(
-    (f) => !fq || f.name.includes(fq) || f.handle.includes(fq),
+  const visibleFriends = friends.filter(
+    (f) => !fq || f.name.toLowerCase().includes(fq) || f.handle.toLowerCase().includes(fq),
   );
 
   // ── シート操作 ──────────────────────────────────────────────────
@@ -74,23 +186,64 @@ export default function ChatPage() {
   }
 
   // ── 新規DM作成 ──────────────────────────────────────────────────
-  function handleNewDM(friend: typeof FRIENDS_LIST[0]) {
-    const existing = conversations.find(
-      (c) => !c.isGroup && c.handle === friend.handle,
-    );
-    if (existing) {
-      closeSheet();
-      router.push(`/chat/${existing.id}`);
+  async function handleNewDM(friend: Friend) {
+    if (!user) return;
+
+    // 既存DM確認：自分が参加しているconversation_idを取得
+    const { data: myConvIds } = await (supabase as any)
+      .from('conversation_members')
+      .select('conversation_id')
+      .eq('user_id', user.id);
+
+    const myIds: string[] = (myConvIds ?? []).map((r: any) => r.conversation_id);
+
+    if (myIds.length > 0) {
+      // 相手も参加しているconversation_idを検索
+      const { data: shared } = await (supabase as any)
+        .from('conversation_members')
+        .select('conversation_id')
+        .eq('user_id', friend.id)
+        .in('conversation_id', myIds);
+
+      const sharedIds: string[] = (shared ?? []).map((r: any) => r.conversation_id);
+
+      if (sharedIds.length > 0) {
+        // type='dm' の会話を探す
+        const { data: existing } = await (supabase as any)
+          .from('conversations')
+          .select('id')
+          .eq('type', 'dm')
+          .in('id', sharedIds);
+
+        if (existing && existing.length > 0) {
+          closeSheet();
+          router.push(`/chat/${existing[0].id}`);
+          return;
+        }
+      }
+    }
+
+    // 新規DM作成
+    const { data: newConv, error } = await (supabase as any)
+      .from('conversations')
+      .insert({ type: 'dm', created_by: user.id })
+      .select('id')
+      .single();
+
+    if (error || !newConv) {
+      console.error('DM作成エラー:', error);
       return;
     }
-    const newId = `dm-${Date.now()}`;
-    setConversations((prev) => [{
-      id: newId, avatar: friend.avatar, name: friend.name,
-      handle: friend.handle, preview: 'New conversation',
-      time: 'Now', unread: false,
-    }, ...prev]);
+
+    await (supabase as any)
+      .from('conversation_members')
+      .insert([
+        { conversation_id: newConv.id, user_id: user.id },
+        { conversation_id: newConv.id, user_id: friend.id },
+      ]);
+
     closeSheet();
-    router.push(`/chat/${newId}`);
+    router.push(`/chat/${newConv.id}`);
   }
 
   // ── グループ作成 ────────────────────────────────────────────────
@@ -100,22 +253,30 @@ export default function ChatPage() {
     );
   }
 
-  function handleCreateGroup() {
-    if (selectedIds.length < 2) return;
-    const members = FRIENDS_LIST.filter((f) => selectedIds.includes(f.id));
-    const newId = `grp-${Date.now()}`;
-    setConversations((prev) => [{
-      id: newId,
-      avatar: members[0].avatar,
-      name: members.map((m) => m.name).join(', '),
-      preview: 'Group created',
-      time: 'Now',
-      unread: false,
-      isGroup: true,
-      memberAvatars: members.map((m) => m.avatar),
-    }, ...prev]);
+  async function handleCreateGroup() {
+    if (selectedIds.length < 2 || !user) return;
+
+    const memberCount = selectedIds.length + 1;
+    const { data: newConv, error } = await (supabase as any)
+      .from('conversations')
+      .insert({ type: 'group', name: `Group (${memberCount})`, created_by: user.id })
+      .select('id')
+      .single();
+
+    if (error || !newConv) {
+      console.error('グループ作成エラー:', error);
+      return;
+    }
+
+    await (supabase as any)
+      .from('conversation_members')
+      .insert([
+        { conversation_id: newConv.id, user_id: user.id },
+        ...selectedIds.map((id) => ({ conversation_id: newConv.id, user_id: id })),
+      ]);
+
     closeSheet();
-    router.push(`/chat/${newId}`);
+    router.push(`/chat/${newConv.id}`);
   }
 
   const TABS: { key: Filter; label: string }[] = [
@@ -244,87 +405,91 @@ export default function ChatPage() {
 
       {/* ── 会話リスト ────────────────────────────────────────────── */}
       <main className="flex-1 overflow-y-auto">
-        {filtered.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => router.push(`/chat/${c.id}`)}
-            className="w-full flex items-center gap-3 px-4 py-3.5 transition-colors duration-150 text-left active:opacity-70"
-            style={{ borderBottom: '1px solid var(--surface-2)' }}
-          >
-            {/* アバター */}
-            <div className="relative flex-shrink-0">
-              {c.isGroup ? (
-                <GroupAvatar avatars={c.memberAvatars ?? []} />
-              ) : (
-                <div
-                  className="w-12 h-12 rounded-full flex items-center justify-center text-2xl"
-                  style={{ background: 'var(--surface-2)' }}
-                >
-                  {c.avatar}
-                </div>
-              )}
-              {c.unread && (
-                <span
-                  className="absolute top-0 right-0 w-3 h-3 rounded-full border-2"
-                  style={{
-                    background: RAINBOW,
-                    borderColor: 'var(--background)',
-                  }}
-                />
-              )}
-            </div>
-
-            {/* テキスト */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-baseline justify-between gap-2 mb-0.5">
-                <div className="flex items-baseline gap-1.5 min-w-0">
-                  <span
-                    className="text-sm font-semibold truncate"
-                    style={{ color: c.unread ? 'var(--foreground)' : 'rgba(255,255,255,0.6)' }}
-                  >
-                    {c.name}
-                  </span>
-                  {c.handle && (
-                    <span className="text-xs truncate" style={{ color: 'var(--muted)' }}>
-                      {c.handle}
-                    </span>
-                  )}
-                  {c.isGroup && (
-                    <span
-                      className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0"
-                      style={{
-                        background: 'rgba(255,26,26,0.12)',
-                        color: 'var(--brand)',
-                        border: '1px solid rgba(255,26,26,0.25)',
-                      }}
-                    >
-                      Group
-                    </span>
-                  )}
-                </div>
-                <span className="text-[11px] flex-shrink-0" style={{ color: 'var(--muted)' }}>
-                  {c.time}
-                </span>
-              </div>
-              <p
-                className="text-xs truncate"
-                style={{
-                  color: c.unread ? 'rgba(255,255,255,0.75)' : 'var(--muted)',
-                  fontWeight: c.unread ? 500 : 400,
-                }}
-              >
-                {c.preview}
-              </p>
-            </div>
-          </button>
-        ))}
-
-        {filtered.length === 0 && (
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>Loading…</p>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20">
             <p className="text-sm" style={{ color: 'var(--muted)' }}>
               {q ? `No results for "${search}"` : 'No messages yet'}
             </p>
           </div>
+        ) : (
+          filtered.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => router.push(`/chat/${c.id}`)}
+              className="w-full flex items-center gap-3 px-4 py-3.5 transition-colors duration-150 text-left active:opacity-70"
+              style={{ borderBottom: '1px solid var(--surface-2)' }}
+            >
+              {/* アバター */}
+              <div className="relative flex-shrink-0">
+                {c.isGroup ? (
+                  <GroupAvatar avatars={c.memberAvatars ?? []} />
+                ) : (
+                  <div
+                    className="w-12 h-12 rounded-full flex items-center justify-center text-2xl"
+                    style={{ background: 'var(--surface-2)' }}
+                  >
+                    {c.avatar}
+                  </div>
+                )}
+                {c.unread && (
+                  <span
+                    className="absolute top-0 right-0 w-3 h-3 rounded-full border-2"
+                    style={{
+                      background: RAINBOW,
+                      borderColor: 'var(--background)',
+                    }}
+                  />
+                )}
+              </div>
+
+              {/* テキスト */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline justify-between gap-2 mb-0.5">
+                  <div className="flex items-baseline gap-1.5 min-w-0">
+                    <span
+                      className="text-sm font-semibold truncate"
+                      style={{ color: c.unread ? 'var(--foreground)' : 'rgba(255,255,255,0.6)' }}
+                    >
+                      {c.name}
+                    </span>
+                    {c.handle && (
+                      <span className="text-xs truncate" style={{ color: 'var(--muted)' }}>
+                        {c.handle}
+                      </span>
+                    )}
+                    {c.isGroup && (
+                      <span
+                        className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                        style={{
+                          background: 'rgba(255,26,26,0.12)',
+                          color: 'var(--brand)',
+                          border: '1px solid rgba(255,26,26,0.25)',
+                        }}
+                      >
+                        Group
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[11px] flex-shrink-0" style={{ color: 'var(--muted)' }}>
+                    {c.time}
+                  </span>
+                </div>
+                <p
+                  className="text-xs truncate"
+                  style={{
+                    color: c.unread ? 'rgba(255,255,255,0.75)' : 'var(--muted)',
+                    fontWeight: c.unread ? 500 : 400,
+                  }}
+                >
+                  {c.preview}
+                </p>
+              </div>
+            </button>
+          ))
         )}
       </main>
 
@@ -362,8 +527,8 @@ export default function ChatPage() {
                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                       </svg>
                     ),
-                    label: '新規DM',
-                    sub: 'Friends一覧から選択',
+                    label: t('newDm'),
+                    sub: t('newDmSub'),
                   },
                   {
                     mode: 'new-group' as SheetMode,
@@ -375,8 +540,8 @@ export default function ChatPage() {
                         <path d="M16 3.13a4 4 0 0 1 0 7.75" />
                       </svg>
                     ),
-                    label: 'グループ作成',
-                    sub: 'Friends複数選択',
+                    label: t('newGroup'),
+                    sub: t('newGroupSub'),
                   },
                   {
                     mode: 'bluetooth' as SheetMode,
@@ -385,8 +550,8 @@ export default function ChatPage() {
                         <polyline points="6.5 6.5 17.5 17.5 12 23 12 1 17.5 6.5 6.5 17.5" />
                       </svg>
                     ),
-                    label: '現場で友達追加',
-                    sub: 'Bluetooth で近くの人と繋がる',
+                    label: t('addNearby'),
+                    sub: t('addNearbySub'),
                   },
                 ].map(({ mode, icon, label, sub }) => (
                   <button
@@ -427,12 +592,16 @@ export default function ChatPage() {
             {sheetMode === 'new-dm' && (
               <div className="flex flex-col" style={{ maxHeight: '65dvh' }}>
                 <SheetHeader
-                  title="新規DM"
+                  title={t('newDm')}
                   onBack={() => openSheet('menu')}
                 />
                 <SheetSearchBar value={friendSearch} onChange={setFriendSearch} placeholder="Friends を検索…" />
                 <div className="overflow-y-auto flex-1 pb-6">
-                  {visibleFriends.map((f) => (
+                  {visibleFriends.length === 0 ? (
+                    <p className="text-center text-sm py-8" style={{ color: 'var(--muted)' }}>
+                      {friends.length === 0 ? 'No friends yet' : 'No results'}
+                    </p>
+                  ) : visibleFriends.map((f) => (
                     <button
                       key={f.id}
                       onClick={() => handleNewDM(f)}
@@ -465,7 +634,7 @@ export default function ChatPage() {
             {sheetMode === 'new-group' && (
               <div className="flex flex-col" style={{ maxHeight: '65dvh' }}>
                 <SheetHeader
-                  title="グループ作成"
+                  title={t('newGroup')}
                   onBack={() => openSheet('menu')}
                   action={
                     <button
@@ -478,7 +647,7 @@ export default function ChatPage() {
                         border: selectedIds.length >= 2 ? 'none' : '1px solid var(--surface-2)',
                       }}
                     >
-                      作成 {selectedIds.length >= 2 ? `(${selectedIds.length})` : ''}
+                      {t('create')} {selectedIds.length >= 2 ? `(${selectedIds.length})` : ''}
                     </button>
                   }
                 />
@@ -490,7 +659,8 @@ export default function ChatPage() {
                     style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', scrollbarWidth: 'none' }}
                   >
                     {selectedIds.map((id) => {
-                      const f = FRIENDS_LIST.find((x) => x.id === id)!;
+                      const f = friends.find((x) => x.id === id);
+                      if (!f) return null;
                       return (
                         <button
                           key={id}
@@ -577,20 +747,20 @@ export default function ChatPage() {
                   </svg>
                 </div>
                 <h3 className="text-base font-bold mb-2" style={{ color: 'var(--foreground)' }}>
-                  現場で友達追加
+                  {t('addNearby')}
                 </h3>
                 <p className="text-sm mb-1" style={{ color: 'var(--muted)' }}>
-                  Bluetooth 機能は近日公開予定です。
+                  {t('bluetoothComingSoon')}
                 </p>
                 <p className="text-xs mb-6" style={{ color: 'rgba(136,136,170,0.6)' }}>
-                  同じ場所にいる人と直接繋がれるようになります。
+                  {t('bluetoothSoon')}
                 </p>
                 <button
                   onClick={() => openSheet('menu')}
                   className="px-8 py-3 rounded-full text-sm font-bold transition-all active:scale-95"
                   style={{ background: 'var(--brand)', color: '#ffffff' }}
                 >
-                  戻る
+                  {t('back')}
                 </button>
               </div>
             )}

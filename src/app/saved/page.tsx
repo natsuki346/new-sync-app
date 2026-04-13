@@ -1,12 +1,14 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { MY_POSTS, type Post } from '@/lib/mockData';
+import { useTranslations } from 'next-intl';
+import { type Post } from '@/lib/mockData';
 
-const SAVED_POSTS = MY_POSTS.slice(0, 2);
+const posts: Post[] = [];
 
 export default function SavedPage() {
   const router = useRouter();
+  const t = useTranslations('saved');
 
   return (
     <div className="flex flex-col flex-1 min-h-0" style={{ background: 'var(--background)' }}>
@@ -30,18 +32,18 @@ export default function SavedPage() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
           </svg>
         </button>
-        <h1 className="text-base font-black" style={{ color: 'var(--foreground)' }}>保存済み</h1>
+        <h1 className="text-base font-black" style={{ color: 'var(--foreground)' }}>{t('title')}</h1>
       </header>
 
       {/* 投稿リスト */}
       <div className="flex-1 overflow-y-auto">
-        {SAVED_POSTS.length === 0 ? (
+        {posts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <span className="text-4xl">🔖</span>
-            <p className="text-sm" style={{ color: 'var(--muted)' }}>保存した投稿はありません</p>
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>{t('empty')}</p>
           </div>
         ) : (
-          SAVED_POSTS.map((post) => <SavedCard key={post.id} post={post} />)
+          posts.map((post) => <SavedCard key={post.id} post={post} />)
         )}
       </div>
     </div>

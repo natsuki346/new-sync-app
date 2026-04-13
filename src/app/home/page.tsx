@@ -3,13 +3,13 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import SyncLogo from '@/components/SyncLogo';
+import { useAuth } from '@/contexts/AuthContext';
 import PostCard from '@/components/PostCard';
 import HashtagFilterBar from '@/components/HashtagFilterBar';
-import {
-  CONVERSATIONS, TIMELINE_POSTS, FRIENDS_POSTS,
-  FOLLOWED_HASHTAGS, CURRENT_USER, getTagEngagement, type Post,
-} from '@/lib/mockData';
+import type { Post } from '@/lib/mockData';
+import { supabase } from '@/lib/supabase';
 import { RAINBOW } from '@/lib/rainbow';
 
 // ── 時間帯バブルカラー ───────────────────────────────────────────
@@ -86,17 +86,15 @@ function spawnSheetBubbles(container: HTMLElement): void {
 const TABS = ['Timeline', 'Friends'] as const;
 type Tab = typeof TABS[number];
 
-const hasUnread = CONVERSATIONS.some((c) => c.unread);
-const DM_UNREAD = CONVERSATIONS.filter((c) => c.unread).length;
-const NOTIF_UNREAD = 3;
+// DM未読バッジ: チャットテーブル連携後に復活させる
+const hasUnread = false;
+const DM_UNREAD = 0;
 
 // ── サイドドロワーメニュー ─────────────────────────────────────────
 const DRAWER_ITEMS = [
-  { icon: '👤', label: 'プロフィール',      path: '/profile'  as string | null },
-  { icon: '🕐', label: '履歴',              path: '/history' },
-  { icon: '💳', label: '支払い',            path: '/payment' },
-  { icon: '📱', label: 'QRコード',          path: '/qrcode' },
-  { icon: '⚙️', label: '設定とプライバシー', path: '/settings' },
+  { icon: '👤', tKey: 'menuProfile',   path: '/profile'  as string | null },
+  { icon: '📱', tKey: 'menuQrcode',    path: '/qrcode' },
+  { icon: '⚙️', tKey: 'menuSettings',  path: '/settings' },
 ];
 
 // ── 左スライドインサイドドロワー ──────────────────────────────────
@@ -109,6 +107,8 @@ function SideDrawer({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const t = useTranslations('home');
+  const { signOut, profile } = useAuth();
   const [showLogoutDlg, setShowLogoutDlg] = useState(false);
 
   function navigate(path: string) {
@@ -136,7 +136,8 @@ function SideDrawer({
         style={{
           width: '80%',
           maxWidth: 300,
-          background: '#000',
+          background: 'var(--background)',
+          opacity: 1,
           transform: open ? 'translateX(0)' : 'translateX(-100%)',
           transition: 'transform 0.3s cubic-bezier(0.32,0.72,0,1)',
           boxShadow: open ? '8px 0 40px rgba(0,0,0,0.7)' : 'none',
@@ -153,13 +154,13 @@ function SideDrawer({
               border: '2px solid rgba(255,255,255,0.25)',
             }}
           >
-            {CURRENT_USER.avatar}
+            {profile?.avatar_url ?? '✨'}
           </div>
-          <p style={{ fontWeight: 700, color: '#fff', fontSize: 16, lineHeight: 1.3, margin: 0 }}>
-            {CURRENT_USER.name}
+          <p style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: 16, lineHeight: 1.3, margin: 0 }}>
+            {profile?.display_name ?? 'ゲスト'}
           </p>
           <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginTop: 3 }}>
-            {CURRENT_USER.handle}
+            {'@' + (profile?.username ?? 'user')}
           </p>
           {/* フォロー数表示なし */}
         </div>
@@ -169,9 +170,9 @@ function SideDrawer({
 
         {/* メニュー */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          {DRAWER_ITEMS.map(({ icon, label, path }) => (
+          {DRAWER_ITEMS.map(({ icon, tKey, path }) => (
             <button
-              key={label}
+              key={tKey}
               onClick={() => path ? navigate(path) : onClose()}
               style={{
                 display: 'flex', alignItems: 'center', gap: 16,
@@ -180,7 +181,7 @@ function SideDrawer({
               }}
             >
               <span style={{ fontSize: 20, width: 28, textAlign: 'center', flexShrink: 0 }}>{icon}</span>
-              <span style={{ flex: 1, fontWeight: 600, color: '#fff', fontSize: 15 }}>{label}</span>
+              <span style={{ flex: 1, fontWeight: 600, color: 'var(--text-primary)', fontSize: 15 }}>{t(tKey as Parameters<typeof t>[0])}</span>
               <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}
                 style={{ width: 16, height: 16, stroke: 'rgba(255,255,255,0.25)', flexShrink: 0 }}
               >
@@ -203,7 +204,7 @@ function SideDrawer({
           }}
         >
           <span style={{ fontSize: 20, width: 28, textAlign: 'center' }}>🚪</span>
-          <span style={{ fontWeight: 600, fontSize: 15, color: '#FF453A' }}>ログアウト</span>
+          <span style={{ fontWeight: 600, fontSize: 15, color: '#FF453A' }}>{t('logout')}</span>
         </button>
 
         {/* ログアウト確認ダイアログ */}
@@ -226,8 +227,8 @@ function SideDrawer({
               }}
             >
               <div className="px-6 pt-6 pb-4 text-center">
-                <p className="text-base font-bold mb-1" style={{ color: 'var(--foreground)' }}>ログアウト</p>
-                <p className="text-sm" style={{ color: 'var(--muted)' }}>本当にログアウトしますか？</p>
+                <p className="text-base font-bold mb-1" style={{ color: 'var(--foreground)' }}>{t('logout')}</p>
+                <p className="text-sm" style={{ color: 'var(--muted)' }}>{t('logoutConfirm')}</p>
               </div>
               <div style={{ borderTop: '1px solid var(--surface-2)' }}>
                 <button
@@ -235,14 +236,14 @@ function SideDrawer({
                   className="w-full py-3.5 text-sm font-semibold"
                   style={{ borderBottom: '1px solid var(--surface-2)', color: 'var(--muted)', background: 'transparent' }}
                 >
-                  キャンセル
+                  {t('cancel')}
                 </button>
                 <button
-                  onClick={() => { setShowLogoutDlg(false); onClose(); }}
+                  onClick={async () => { setShowLogoutDlg(false); onClose(); await signOut(); router.push('/auth'); }}
                   className="w-full py-3.5 text-sm font-bold"
                   style={{ color: '#FF453A', background: 'transparent' }}
                 >
-                  ログアウト
+                  {t('logout')}
                 </button>
               </div>
             </div>
@@ -272,6 +273,19 @@ function extractHashtags(text: string): string[] {
   return matches ?? [];
 }
 
+function highlightHashtags(text: string): string {
+  const escaped = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+  return escaped.replace(
+    /#([\w\u3040-\u9fff]+)/g,
+    '<span style="color:#f472b6;font-weight:600">#$1</span>'
+  );
+}
+
 async function scanWithAI(text: string): Promise<{ blocked: boolean; reason: string }> {
   console.log('[scanWithAI] スキャン開始:', text);
   const res = await fetch('/api/scan-post', {
@@ -285,12 +299,16 @@ async function scanWithAI(text: string): Promise<{ blocked: boolean; reason: str
 }
 
 function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => void; onPost: (post: Post) => void }) {
-  const [text,       setText]       = useState('');
-  const [posted,     setPosted]     = useState(false);
-  const [media,      setMedia]      = useState<MediaItem | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
-  const [showOpps,   setShowOpps]   = useState(false);
-  const [oppsMessage, setOppsMessage] = useState('');
+  const t = useTranslations('home');
+  const { user, profile } = useAuth();
+  const [text,         setText]         = useState('');
+  const [posted,       setPosted]       = useState(false);
+  const [media,        setMedia]        = useState<MediaItem | null>(null);
+  const [isScanning,   setIsScanning]   = useState(false);
+  const [showOpps,     setShowOpps]     = useState(false);
+  const [oppsMessage,  setOppsMessage]  = useState('');
+  const [followedTags, setFollowedTags] = useState<string[]>([]);
+  const [suggestions,  setSuggestions]  = useState<string[]>([]);
   const imageRef  = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const textaRef  = useRef<HTMLTextAreaElement>(null);
@@ -308,10 +326,65 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
     if (open) {
       if (modalRef.current) spawnSheetBubbles(modalRef.current);
       setTimeout(() => textaRef.current?.focus(), 120);
+      // フォロー中ハッシュタグを取得
+      if (user && followedTags.length === 0) {
+        supabase
+          .from('follows')
+          .select('tag')
+          .eq('follower_id', user.id)
+          .eq('type', 'hashtag')
+          .then(({ data }) => {
+            if (data) {
+              setFollowedTags(
+                (data as { tag: string | null }[]).map((r) => r.tag).filter(Boolean) as string[]
+              );
+            }
+          });
+      }
     } else {
       if (media) { URL.revokeObjectURL(media.url); setMedia(null); }
+      setSuggestions([]);
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function getHashQuery(value: string, cursorPos: number): string | null {
+    const before = value.slice(0, cursorPos);
+    const match = before.match(/#(\w*)$/);
+    return match ? match[1] : null;
+  }
+
+  function handleTextChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    const val = e.target.value;
+    setText(val);
+    const cursor = e.target.selectionStart ?? val.length;
+    const query = getHashQuery(val, cursor);
+    if (query !== null) {
+      const prefix = '#' + query;
+      const filtered = followedTags.filter((tag) =>
+        tag.toLowerCase().startsWith(prefix.toLowerCase())
+      );
+      setSuggestions(filtered);
+    } else {
+      setSuggestions([]);
+    }
+  }
+
+  function applySuggestion(tag: string) {
+    const el = textaRef.current;
+    if (!el) return;
+    const cursor = el.selectionStart ?? text.length;
+    const before = text.slice(0, cursor);
+    const after  = text.slice(cursor);
+    const newBefore = before.replace(/#\w*$/, tag + ' ');
+    const newText = newBefore + after;
+    setText(newText);
+    setSuggestions([]);
+    // カーソルを挿入位置の後ろに移動
+    setTimeout(() => {
+      el.focus();
+      el.setSelectionRange(newBefore.length, newBefore.length);
+    }, 0);
+  }
 
   function handleFile(file: File | undefined) {
     if (!file) return;
@@ -323,25 +396,64 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
     setMedia(null);
   }
   function handleClose() { removeMedia(); setText(''); onClose(); }
-  function doPost() {
-    const now      = Date.now();
-    const lifetime = 72 * 60 * 60 * 1000;
-    const newPost: Post = {
-      id:        `post_${now}`,
-      avatar:    CURRENT_USER.avatar,
-      handle:    CURRENT_USER.handle,
-      name:      CURRENT_USER.name,
-      content:   text,
-      hashtags:  extractHashtags(text),
-      time:      'たった今',
-      createdAt: now,
-      expiresAt: now + lifetime,
-      isMutual:  true,
-    };
-    onPost(newPost);
-    if (modalRef.current) spawnSoapBubbles(modalRef.current);
-    setPosted(true);
-    setTimeout(() => { setPosted(false); removeMedia(); setText(''); onClose(); }, 1000);
+  async function doPost() {
+    if (!user) return;
+    const hashtags  = extractHashtags(text);
+    const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+
+    // profiles から lat/lng を取得して投稿にコピー
+    const { data: profileGps } = await (supabase as any)
+      .from('profiles')
+      .select('lat, lng')
+      .eq('id', user.id)
+      .single();
+
+    const { data, error } = await (supabase as any)
+      .from('posts')
+      .insert({
+        user_id:    user.id,
+        content:    text,
+        hashtags,
+        is_mutual:  false,
+        expires_at: expiresAt,
+        lat:        profileGps?.lat ?? null,
+        lng:        profileGps?.lng ?? null,
+      } as any)
+      .select(`
+        id, content, hashtags, is_mutual, expires_at, created_at, lat, lng,
+        profiles (id, username, display_name, avatar_url)
+      `)
+      .single();
+
+    if (!error && data) {
+      const d = data as any;
+      const prof = Array.isArray(d.profiles) ? d.profiles[0] : d.profiles;
+      const newPost: Post = {
+        id:        d.id,
+        content:   d.content,
+        hashtags:  (d.hashtags as string[]) ?? [],
+        time:      '',
+        isMutual:  d.is_mutual,
+        expiresAt: new Date(d.expires_at).getTime(),
+        createdAt: new Date(d.created_at).getTime(),
+        name:      (prof as { display_name?: string } | null)?.display_name ?? profile?.display_name ?? 'Unknown',
+        handle:    '@' + ((prof as { username?: string } | null)?.username ?? profile?.username ?? 'user'),
+        avatar:    (prof as { avatar_url?: string | null } | null)?.avatar_url ?? profile?.avatar_url ?? '✨',
+        lat:       d.lat ?? null,
+        lng:       d.lng ?? null,
+      };
+      onPost(newPost);
+      // 投稿したハッシュタグのエンゲージメントを+1
+      for (const tag of hashtags) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (supabase.rpc as any)('increment_hashtag_post', { p_user_id: user.id, p_tag: tag });
+      }
+      if (modalRef.current) spawnSoapBubbles(modalRef.current);
+      setPosted(true);
+      setTimeout(() => { setPosted(false); removeMedia(); setText(''); onClose(); }, 1000);
+    } else {
+      console.error('投稿エラー:', error);
+    }
   }
 
   async function handlePost() {
@@ -351,6 +463,13 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
     try {
       const result = await scanWithAI(text);
       if (result.blocked) {
+        if (user) {
+          await (supabase as any).from('oops_logs').insert({
+            user_id: user.id,
+            content: text,
+            reason:  result.reason,
+          });
+        }
         setIsScanning(false);
         setOppsMessage(result.reason);
         setShowOpps(true);
@@ -360,7 +479,7 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
       // エラー時は投稿を通す
     }
     setIsScanning(false);
-    doPost();
+    await doPost();
   }
 
   return (
@@ -397,7 +516,7 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
               fontSize: 16, cursor: 'pointer',
             }}
           >
-            見直す
+            {t('review')}
           </button>
         </div>
       </div>
@@ -419,7 +538,7 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
         padding: '16px 16px 12px', background: '#111111',
       }}>
         <button style={{ color: '#ffffff', fontSize: 15, fontWeight: 500, padding: '0 4px' }} onClick={handleClose}>
-          キャンセル
+          {t('cancel')}
         </button>
         <div />
         <button
@@ -433,7 +552,7 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
           }}
           onClick={handlePost}
         >
-          {posted ? '投稿しました！' : isScanning ? 'スキャン中...' : '投稿'}
+          {posted ? t('posted') : isScanning ? t('scanning') : t('post')}
         </button>
       </div>
 
@@ -445,23 +564,82 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
           fontSize: 20, flexShrink: 0, marginTop: 2,
           background: 'var(--surface-2)',
         }}>
-          {CURRENT_USER.avatar}
+          {profile?.avatar_url ?? '✨'}
         </div>
         <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
-          <textarea
-            ref={textaRef}
-            rows={4}
-            style={{
-              width: '100%', resize: 'none', outline: 'none',
-              background: 'transparent', color: '#ffffff',
-              fontSize: 19, lineHeight: 1.6, caretColor: '#FF1A1A',
-              border: 'none', fontFamily: 'inherit',
-            }}
-            placeholder="今何してる？"
-            maxLength={MAX_CHARS}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
+          <div style={{ position: 'relative' }}>
+            {/* 装飾レイヤー（背面）: #タグをピンクにハイライト */}
+            <div
+              aria-hidden="true"
+              style={{
+                position: 'absolute', inset: 0,
+                pointerEvents: 'none',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                overflowWrap: 'break-word',
+                color: '#ffffff',
+                fontSize: 19, lineHeight: 1.6,
+                fontFamily: 'inherit',
+                padding: 0,
+                margin: 0,
+              }}
+              dangerouslySetInnerHTML={{ __html: highlightHashtags(text) || '<span style="opacity:0">x</span>' }}
+            />
+            {/* 入力レイヤー（前面・透明） */}
+            <textarea
+              ref={textaRef}
+              rows={4}
+              style={{
+                position: 'relative',
+                width: '100%', resize: 'none', outline: 'none',
+                background: 'transparent', color: 'transparent',
+                caretColor: '#FF1A1A',
+                fontSize: 19, lineHeight: 1.6,
+                border: 'none', fontFamily: 'inherit',
+                padding: 0, margin: 0,
+              }}
+              placeholder={t('postPlaceholder')}
+              maxLength={MAX_CHARS}
+              value={text}
+              onChange={handleTextChange}
+            />
+          </div>
+          {suggestions.length > 0 && (
+            <div style={{
+              background: '#111',
+              border: '1px solid #333',
+              borderRadius: 12,
+              overflow: 'hidden',
+              marginTop: 4
+            }}>
+              {suggestions.map(tag => (
+                <button
+                  key={tag}
+                  onPointerDown={(e) => {
+                    e.preventDefault()
+                    applySuggestion(tag)
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    width: '100%',
+                    padding: '10px 16px',
+                    background: 'none',
+                    border: 'none',
+                    borderBottom: '1px solid #222',
+                    cursor: 'pointer',
+                    textAlign: 'left'
+                  }}
+                >
+                  <span style={{ color: '#E63946', fontWeight: 700, fontSize: 13 }}>#</span>
+                  <span style={{ color: '#fff', fontSize: 13 }}>
+                    {tag.replace(/^#/, '')}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
           <style>{`textarea::-webkit-input-placeholder{color:#666;}textarea::placeholder{color:#666;}`}</style>
           {media && (
             <div style={{ position: 'relative', marginTop: 12, borderRadius: 16, overflow: 'hidden', border: '1px solid #333' }}>
@@ -552,18 +730,38 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
 
 // ── 返信モーダル（フルスクリーン・下からスライドアップ） ──────────
 
+// ── 返信アイテム型 ────────────────────────────────────────────────
+type ReplyItem = {
+  id:         string;
+  content:    string;
+  created_at: string;
+  profile: {
+    username:     string;
+    display_name: string;
+    avatar_url:   string | null;
+  } | null;
+};
+
 function ReplyModal({
   post,
   open,
   onClose,
+  onReplied,
 }: {
-  post: Post | null;
-  open: boolean;
-  onClose: () => void;
+  post:       Post | null;
+  open:       boolean;
+  onClose:    () => void;
+  onReplied?: () => void;
 }) {
-  const [text, setText] = useState('');
-  const textaRef  = useRef<HTMLTextAreaElement>(null);
-  const modalRef  = useRef<HTMLDivElement>(null);
+  const t = useTranslations('home');
+  const { user, profile } = useAuth();
+  const [text,        setText]        = useState('');
+  const [submitting,  setSubmitting]  = useState(false);
+  const [replies,     setReplies]     = useState<ReplyItem[]>([]);
+  const [repliesLoading, setRepliesLoading] = useState(false);
+  const textaRef = useRef<HTMLTextAreaElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const hashtagColor = typeof window !== 'undefined' ? localStorage.getItem('sync_hashtag_color') || '' : '';
 
   useEffect(() => {
     if (open && modalRef.current) spawnSheetBubbles(modalRef.current);
@@ -575,10 +773,49 @@ function ReplyModal({
   if (post) lastPost.current = post;
   const displayPost = post ?? lastPost.current;
 
-  function handlePost() {
-    if (!text.trim()) return;
-    setText('');
-    onClose();
+  // 既存の返信を取得
+  useEffect(() => {
+    if (!open || !displayPost) return;
+    setRepliesLoading(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase.from('posts') as any)
+      .select(`
+        id, content, created_at,
+        profile:profiles!posts_user_id_fkey (
+          username, display_name, avatar_url
+        )
+      `)
+      .eq('parent_id', displayPost.id)
+      .order('created_at', { ascending: true })
+      .then(({ data }: { data: ReplyItem[] | null }) => {
+        setReplies(data ?? []);
+        setRepliesLoading(false);
+      });
+  // displayPost.id が変わった（別投稿を開いた）時だけ再取得
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, displayPost?.id]);
+
+  async function handlePost() {
+    if (!text.trim() || !user || !displayPost || submitting) return;
+    setSubmitting(true);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase.from('posts') as any).insert({
+      user_id:    user.id,
+      content:    text.trim(),
+      parent_id:  displayPost.id,
+      hashtags:   [],
+      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    });
+
+    if (error) {
+      console.error('返信保存エラー:', error);
+    } else {
+      setText('');
+      onClose();
+      onReplied?.();
+    }
+    setSubmitting(false);
   }
 
   return (
@@ -605,18 +842,18 @@ function ReplyModal({
           style={{ color: 'var(--foreground)' }}
           onClick={() => { setText(''); onClose(); }}
         >
-          キャンセル
+          {t('cancel')}
         </button>
         <button
           onClick={handlePost}
-          disabled={!text.trim()}
+          disabled={!text.trim() || submitting}
           className="px-5 py-1.5 rounded-full text-sm font-bold transition-colors"
           style={{
-            background: text.trim() ? 'var(--brand)' : 'rgba(255,26,26,0.25)',
-            color: text.trim() ? '#ffffff' : 'rgba(255,26,26,0.5)',
+            background: text.trim() && !submitting ? 'var(--brand)' : 'rgba(255,26,26,0.25)',
+            color: text.trim() && !submitting ? '#ffffff' : 'rgba(255,26,26,0.5)',
           }}
         >
-          返信
+          {submitting ? '送信中…' : t('reply')}
         </button>
       </div>
 
@@ -654,13 +891,65 @@ function ReplyModal({
                 </p>
                 <div className="flex flex-wrap gap-1 mt-1.5">
                   {displayPost.hashtags.map((tag) => (
-                    <span key={tag} className="text-xs font-semibold" style={{ color: 'var(--brand)' }}>
+                    <span key={tag} style={hashtagColor ? {
+                      background: 'transparent',
+                      border: `1.5px solid ${hashtagColor}`,
+                      color: '#ffffff',
+                      padding: '2px 10px',
+                      borderRadius: 9999,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      display: 'inline-block',
+                    } : {
+                      background: 'linear-gradient(var(--surface), var(--surface)) padding-box, linear-gradient(90deg,#FF6B6B,#FFD93D,#6BCB77,#4D96FF,#9B59B6) border-box',
+                      border: '1.5px solid transparent',
+                      color: '#ffffff',
+                      padding: '2px 10px',
+                      borderRadius: 9999,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      display: 'inline-block',
+                    }}>
                       {tag}
                     </span>
                   ))}
                 </div>
               </div>
             </div>
+
+            {/* 既存の返信一覧 */}
+            {repliesLoading ? (
+              <p className="text-xs py-3 pl-12" style={{ color: 'var(--muted)' }}>読み込み中…</p>
+            ) : replies.length > 0 && (
+              <div className="mb-2">
+                {replies.map((r) => (
+                  <div key={r.id} className="flex gap-3 py-2">
+                    <div className="flex flex-col items-center flex-shrink-0" style={{ width: 40 }}>
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-base"
+                        style={{ background: 'var(--surface-2)' }}
+                      >
+                        {r.profile?.avatar_url ?? '👤'}
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-1.5 mb-0.5">
+                        <span className="text-xs font-bold" style={{ color: 'var(--foreground)' }}>
+                          {r.profile?.display_name ?? ''}
+                        </span>
+                        <span className="text-[11px]" style={{ color: 'var(--muted)' }}>
+                          @{r.profile?.username ?? ''}
+                        </span>
+                      </div>
+                      <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: 'rgba(255,255,255,0.75)' }}>
+                        {r.content}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                <div className="my-2" style={{ borderTop: '1px solid var(--surface-2)' }} />
+              </div>
+            )}
 
             {/* リプライ入力行 */}
             <div className="flex gap-3">
@@ -669,7 +958,7 @@ function ReplyModal({
                   className="w-10 h-10 rounded-full flex items-center justify-center text-xl"
                   style={{ background: 'var(--surface-2)', border: '1px solid var(--surface-2)' }}
                 >
-                  {CURRENT_USER.avatar}
+                  {profile?.avatar_url ?? '✨'}
                 </div>
               </div>
               <div className="flex-1 min-w-0 pt-2">
@@ -685,7 +974,7 @@ function ReplyModal({
                     e.target.style.height = 'auto';
                     e.target.style.height = e.target.scrollHeight + 'px';
                   }}
-                  placeholder="返信を投稿"
+                  placeholder={t('replyPlaceholder')}
                   rows={4}
                   className="w-full resize-none outline-none text-sm leading-relaxed"
                   style={{
@@ -711,7 +1000,9 @@ function ReplyModal({
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export default function HomePage() {
+  const t = useTranslations('home');
   const router = useRouter();
+  const { user, profile, loading, hasProfile, profileLoading, followedHashtags, followHashtag } = useAuth();
   const [activeTab,     setActiveTab]     = useState<Tab>('Timeline');
   const [timelineFilter, setTimelineFilter] = useState<string[]>([]);
   const [friendsFilter,  setFriendsFilter]  = useState<string[]>([]);
@@ -719,10 +1010,197 @@ export default function HomePage() {
   const [replyPost,     setReplyPost]     = useState<Post | null>(null);
   const [replyOpen,     setReplyOpen]     = useState(false);
   const [modalOpen,     setModalOpen]     = useState(false);
-  const [feedPosts,     setFeedPosts]     = useState<Post[]>(TIMELINE_POSTS);
+  const [feedPosts,     setFeedPosts]     = useState<Post[]>([]);
+  const [friendsPostsState, setFriendsPostsState] = useState<Post[]>([]);
+  const [unlockedTags,     setUnlockedTags]     = useState<string[]>([]);
+  const [myReactionsMap,   setMyReactionsMap]   = useState<Record<string, string>>({});
+  const [reactionCountsMap, setReactionCountsMap] = useState<Record<string, number>>({});
   const [cardColor,     setCardColor]     = useState<string>('');
   const [hashtagColor,  setHashtagColor]  = useState<string>('');
   const [toastMsg,      setToastMsg]      = useState<string | null>(null);
+  const [notifUnread,   setNotifUnread]   = useState(0);
+
+  useEffect(() => {
+    if (loading) return;
+    if (user && !profileLoading && !hasProfile) { router.push('/auth/username'); }
+  }, [loading, user, hasProfile, profileLoading, router]);
+
+  // 未読通知バッジ数
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from('notifications')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('read', false)
+      .then(({ count }) => setNotifUnread(count ?? 0));
+  }, [user]);
+
+  // フォロー中ハッシュタグを含む投稿を取得（followedHashtagsが変わるたびに再取得）
+  useEffect(() => {
+    if (!user || followedHashtags.length === 0) return;
+    const fetchPosts = async () => {
+      const now = new Date().toISOString();
+      const { data, error } = await (supabase as any)
+        .from('posts')
+        .select(`
+          id, content, hashtags, is_mutual, expires_at, created_at, lat, lng,
+          profiles (id, username, display_name, avatar_url)
+        `)
+        .is('parent_id', null)
+        .overlaps('hashtags', followedHashtags)
+        .gt('expires_at', now)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (!error && data) {
+        const mapped: Post[] = data.map((p: any) => {
+          const prof = Array.isArray(p.profiles) ? p.profiles[0] : p.profiles;
+          return {
+            id:        p.id,
+            content:   p.content,
+            hashtags:  (p.hashtags as string[]) ?? [],
+            time:      '',
+            isMutual:  p.is_mutual,
+            expiresAt: new Date(p.expires_at).getTime(),
+            createdAt: new Date(p.created_at).getTime(),
+            name:      (prof as { display_name?: string } | null)?.display_name ?? 'Unknown',
+            handle:    '@' + ((prof as { username?: string } | null)?.username ?? 'user'),
+            avatar:    (prof as { avatar_url?: string | null } | null)?.avatar_url ?? '✨',
+            lat:       p.lat ?? null,
+            lng:       p.lng ?? null,
+          };
+        });
+        setFeedPosts(mapped);
+
+        // reactions を一括取得してマップに変換
+        const postIds = mapped.map(p => p.id);
+        if (postIds.length > 0) {
+          const { data: allReactions } = await (supabase as any)
+            .from('reactions')
+            .select('target_id, user_id, emoji')
+            .eq('target_type', 'post')
+            .in('target_id', postIds);
+
+          const newMyMap: Record<string, string> = {};
+          const newCountMap: Record<string, number> = {};
+          (allReactions ?? []).forEach((r: any) => {
+            if (r.user_id === user.id) newMyMap[r.target_id] = r.emoji;
+            newCountMap[r.target_id] = (newCountMap[r.target_id] ?? 0) + 1;
+          });
+          setMyReactionsMap(prev => ({ ...prev, ...newMyMap }));
+          setReactionCountsMap(prev => ({ ...prev, ...newCountMap }));
+        }
+      }
+    };
+    fetchPosts();
+  }, [user, followedHashtags]);
+
+  // フォロー中ユーザーの投稿を取得
+  useEffect(() => {
+    if (!user) return;
+    const fetchFriendsPosts = async () => {
+      const { data: followData } = await (supabase as any)
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', user.id)
+        .eq('type', 'user')
+        .eq('status', 'accepted');
+
+      if (!followData || followData.length === 0) return;
+
+      const followingIds = (followData as any[]).map(f => f.following_id);
+      const now = new Date().toISOString();
+
+      const { data: postsData } = await (supabase as any)
+        .from('posts')
+        .select(`
+          id, content, hashtags, is_mutual, expires_at, created_at, lat, lng,
+          profiles (id, username, display_name, avatar_url)
+        `)
+        .is('parent_id', null)
+        .in('user_id', followingIds)
+        .gt('expires_at', now)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (postsData) {
+        const mapped: Post[] = postsData.map((p: any) => {
+          const prof = Array.isArray(p.profiles) ? p.profiles[0] : p.profiles;
+          return {
+            id:        p.id,
+            content:   p.content,
+            hashtags:  (p.hashtags as string[]) ?? [],
+            time:      '',
+            isMutual:  p.is_mutual,
+            expiresAt: new Date(p.expires_at).getTime(),
+            createdAt: new Date(p.created_at).getTime(),
+            name:      (prof as { display_name?: string } | null)?.display_name ?? 'Unknown',
+            handle:    '@' + ((prof as { username?: string } | null)?.username ?? 'user'),
+            avatar:    (prof as { avatar_url?: string | null } | null)?.avatar_url ?? '✨',
+            lat:       p.lat ?? null,
+            lng:       p.lng ?? null,
+          };
+        });
+        setFriendsPostsState(mapped);
+
+        // フレンド投稿の reactions を一括取得
+        const friendPostIds = mapped.map(p => p.id);
+        if (friendPostIds.length > 0) {
+          const { data: allReactions } = await (supabase as any)
+            .from('reactions')
+            .select('target_id, user_id, emoji')
+            .eq('target_type', 'post')
+            .in('target_id', friendPostIds);
+
+          const newMyMap: Record<string, string> = {};
+          const newCountMap: Record<string, number> = {};
+          (allReactions ?? []).forEach((r: any) => {
+            if (r.user_id === user.id) newMyMap[r.target_id] = r.emoji;
+            newCountMap[r.target_id] = (newCountMap[r.target_id] ?? 0) + 1;
+          });
+          setMyReactionsMap(prev => ({ ...prev, ...newMyMap }));
+          setReactionCountsMap(prev => ({ ...prev, ...newCountMap }));
+        }
+
+        // フレンドの投稿のハッシュタグを自動でエンゲージメント開始
+        const allFriendTags = mapped.flatMap(p => p.hashtags);
+        const uniqueFriendTags = [...new Set(allFriendTags)];
+
+        const { data: myFollowedTags } = await (supabase as any)
+          .from('follows')
+          .select('tag')
+          .eq('follower_id', user.id)
+          .eq('type', 'hashtag');
+
+        const myTags = (myFollowedTags ?? []).map((f: any) => f.tag).filter(Boolean) as string[];
+        const newTags = uniqueFriendTags.filter(tag => !myTags.includes(tag));
+
+        for (const tag of newTags) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (supabase.from('hashtag_engagements') as any).upsert(
+            { user_id: user.id, tag, post_count: 0, reaction_count: 0 },
+            { onConflict: 'user_id,tag', ignoreDuplicates: true },
+          );
+        }
+      }
+    };
+    fetchFriendsPosts();
+  }, [user]);
+
+  // 解放済みハッシュタグを取得（post_count>=3 && reaction_count>=10）
+  useEffect(() => {
+    if (!user) return;
+    (supabase as any)
+      .from('hashtag_engagements')
+      .select('tag')
+      .eq('user_id', user.id)
+      .gte('post_count', 3)
+      .gte('reaction_count', 10)
+      .then(({ data }: { data: Array<{ tag: string }> | null }) => {
+        setUnlockedTags((data ?? []).map(e => e.tag));
+      });
+  }, [user]);
 
   useEffect(() => {
     const bg = localStorage.getItem('sync_card_bg');
@@ -757,21 +1235,20 @@ export default function HomePage() {
   }, [feedPosts, timelineFilter]);
 
   const friendsPosts = useMemo(() => {
-    if (friendsFilter.length === 0) return FRIENDS_POSTS;
-    return FRIENDS_POSTS.filter((p) =>
+    if (friendsFilter.length === 0) return friendsPostsState;
+    return friendsPostsState.filter((p) =>
       p.hashtags.some((tag) => friendsFilter.includes(tag)),
     );
-  }, [friendsFilter]);
+  }, [friendsFilter, friendsPostsState]);
 
   const friendsTags = useMemo(() => {
     const set = new Set<string>();
-    FRIENDS_POSTS.forEach((p) => p.hashtags.forEach((t) => set.add(t)));
+    friendsPostsState.forEach((p) => p.hashtags.forEach((t) => set.add(t)));
     return Array.from(set);
-  }, []);
+  }, [friendsPostsState]);
 
   function isTagEngaged(tag: string): boolean {
-    const tagName = tag.replace('#', '');
-    return getTagEngagement(tagName).unlocked;
+    return unlockedTags.includes(tag);
   }
 
   function showToast(msg: string) {
@@ -780,17 +1257,73 @@ export default function HomePage() {
   }
 
   function openReply(post: Post) {
+    if (!user) { showToast('ログインが必要です'); return; }
     if (post.hashtags.length > 0 && !post.hashtags.some(isTagEngaged)) {
       const tag = post.hashtags[0];
-      showToast(`${tag}のエンゲージメントを達成するとコメントできます`);
+      showToast(t('tagLocked', { tag }));
       return;
     }
     setReplyPost(post);
     setReplyOpen(true);
   }
 
+  async function handleReact(postId: string, emoji: string, postHashtags: string[]) {
+    if (!user) { showToast('ログインが必要です'); return; }
+
+    // 同じ絵文字で既にリアクション済みなら二重カウントをスキップ
+    if (myReactionsMap[postId] === emoji) return;
+
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(postId);
+    if (!isUUID) {
+      console.warn('postId is not a UUID — skipping DB save:', postId);
+      return;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error } = await (supabase.from('reactions') as any).upsert({
+      user_id:     user.id,
+      target_id:   postId,
+      target_type: 'post',
+      emoji,
+    }, { onConflict: 'user_id,target_id,emoji' });
+
+    if (!error) {
+      // ローカル状態を更新
+      setMyReactionsMap(prev => ({ ...prev, [postId]: emoji }));
+      setReactionCountsMap(prev => ({ ...prev, [postId]: (prev[postId] ?? 0) + 1 }));
+      // hashtag_engagements.reaction_count を +1
+      for (const tag of postHashtags) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { error: rpcErr } = await (supabase.rpc as any)('increment_hashtag_reaction', { p_user_id: user.id, p_tag: tag });
+        if (rpcErr) console.error('increment_hashtag_reaction error:', rpcErr);
+      }
+    } else {
+      console.error('reaction upsert error:', error);
+    }
+  }
+
+  async function handleFollowHashtag(tag: string) {
+    if (!user) return;
+    if (followedHashtags.includes(tag)) {
+      showToast(`${tag} はフォロー済み`);
+      return;
+    }
+    await followHashtag(tag);
+    showToast(`${tag} をフォローしました`);
+  }
+
   function handleHashtagClick(tag: string) {
+    handleFollowHashtag(tag);
     router.push(`/search?tag=${tag.replace('#', '')}`);
+  }
+
+  // セッション確認中はスピナーを表示
+  if (loading) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--background)' }}>
+        <div style={{ width: 32, height: 32, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.1)', borderTopColor: '#7C6FE8', animation: 'spin 0.8s linear infinite' }} />
+      </div>
+    );
   }
 
   return (
@@ -832,6 +1365,10 @@ export default function HomePage() {
         post={replyPost}
         open={replyOpen}
         onClose={() => setReplyOpen(false)}
+        onReplied={() => {
+          // 返信はフィードに表示されないので feed のリフレッシュは不要
+          // 通知はSupabase側トリガーで自動送信済み
+        }}
       />
 
       {/* ── 投稿モーダル ───────────────────────────────────────────── */}
@@ -855,7 +1392,7 @@ export default function HomePage() {
             border: '1px solid var(--surface-2)',
           }}
         >
-          {CURRENT_USER.avatar}
+          {profile?.avatar_url ?? '✨'}
         </button>
 
         {/* 中央: ロゴ */}
@@ -873,12 +1410,12 @@ export default function HomePage() {
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
             <path d="M13.73 21a2 2 0 0 1-3.46 0" />
           </svg>
-          {NOTIF_UNREAD > 0 && (
+          {notifUnread > 0 && (
             <span
               className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] flex items-center justify-center rounded-full text-[9px] font-bold border-2"
               style={{ background: '#FF1A1A', borderColor: 'var(--background)', color: '#fff' }}
             >
-              {NOTIF_UNREAD}
+              {notifUnread}
             </span>
           )}
         </Link>
@@ -917,7 +1454,7 @@ export default function HomePage() {
               ? { background: RAINBOW, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }
               : { color: 'var(--muted)' }}
           >
-            {tab}
+            {tab === 'Timeline' ? t('timeline') : t('friends')}
             {activeTab === tab && (
               <span
                 className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full"
@@ -937,7 +1474,7 @@ export default function HomePage() {
           background: RAINBOW,
           boxShadow: '0 4px 20px rgba(124,111,232,0.5)',
         }}
-        onClick={() => setModalOpen(true)}
+        onClick={() => user ? setModalOpen(true) : showToast('ログインが必要です')}
       >
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="2 2 20 20" width="31" height="31" fill="none">
           <g transform="rotate(45, 12, 12)">
@@ -962,18 +1499,30 @@ export default function HomePage() {
       </button>
 
       {/* ── コンテンツ ─────────────────────────────────────────────── */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
         {activeTab === 'Timeline' && (
           <>
             <HashtagFilterBar
-              tags={FOLLOWED_HASHTAGS}
+              tags={followedHashtags}
               selected={timelineFilter}
               onChange={setTimelineFilter}
             />
             <div key={`tl-${timelineFilter.join(',')}`} className="feed-animate">
               {timelinePosts.length > 0 ? (
                 timelinePosts.map((post) => (
-                  <PostCard key={post.id} post={post} onReply={openReply} onHashtagClick={handleHashtagClick} onUserClick={() => { const u = post.handle.replace('@', ''); router.push(u === 'you' ? '/profile' : `/profile/${u}`); }} cardColor={cardColor || undefined} hashtagBorderColor={hashtagColor || undefined} isReplyLocked={post.hashtags.length > 0 && !post.hashtags.some(isTagEngaged)} />
+                  <PostCard
+                    key={post.id}
+                    post={post}
+                    onReply={openReply}
+                    onHashtagClick={handleHashtagClick}
+                    onUserClick={() => { const u = post.handle.replace('@', ''); router.push(u === 'you' ? '/profile' : `/profile/${u}`); }}
+                    onReact={(emoji) => handleReact(post.id, emoji, post.hashtags)}
+                    initialReactedEmoji={myReactionsMap[post.id] ?? null}
+                    reactionCount={reactionCountsMap[post.id] ?? 0}
+                    cardColor={cardColor || undefined}
+                    hashtagBorderColor={hashtagColor || undefined}
+                    isReplyLocked={post.hashtags.length > 0 && !post.hashtags.some(isTagEngaged)}
+                  />
                 ))
               ) : (
                 <EmptyState message="No posts for the selected tags" />
@@ -984,22 +1533,28 @@ export default function HomePage() {
 
         {activeTab === 'Friends' && (
           <div key="friends" className="feed-animate">
-            <HashtagFilterBar
-              tags={friendsTags}
-              selected={friendsFilter}
-              onChange={setFriendsFilter}
-            />
-            <div key={`fr-${friendsFilter.join(',')}`} className="feed-animate">
-              {friendsPosts.length > 0 ? (
-                friendsPosts.map((post) => (
-                  <PostCard key={post.id} post={post} onReply={openReply} onHashtagClick={handleHashtagClick} onUserClick={() => { const u = post.handle.replace('@', ''); router.push(u === 'you' ? '/profile' : `/profile/${u}`); }} cardColor={cardColor || undefined} hashtagBorderColor={hashtagColor || undefined} isReplyLocked={post.hashtags.length > 0 && !post.hashtags.some(isTagEngaged)} />
-                ))
-              ) : (
-                <EmptyState message="No posts for the selected tags" />
-              )}
-            </div>
+            {friendsPostsState.length > 0 ? (
+              friendsPostsState.map((post) => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  onReply={openReply}
+                  onHashtagClick={handleHashtagClick}
+                  onUserClick={() => { const u = post.handle.replace('@', ''); router.push(u === 'you' ? '/profile' : `/profile/${u}`); }}
+                  onReact={(emoji) => handleReact(post.id, emoji, post.hashtags)}
+                  initialReactedEmoji={myReactionsMap[post.id] ?? null}
+                  reactionCount={reactionCountsMap[post.id] ?? 0}
+                  cardColor={cardColor || undefined}
+                  hashtagBorderColor={hashtagColor || undefined}
+                  isReplyLocked={post.hashtags.length > 0 && !post.hashtags.some(isTagEngaged)}
+                />
+              ))
+            ) : (
+              <EmptyState message="No posts for the selected tags" />
+            )}
           </div>
         )}
+
       </main>
     </div>
   );

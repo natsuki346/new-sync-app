@@ -44,6 +44,8 @@ export default function BottomNav() {
   const RAINBOW = isDark ? RAINBOW_DARK : RAINBOW_LIGHT
   const stops   = isDark ? STOPS_DARK   : STOPS_LIGHT
 
+  if (pathname === '/auth' || pathname === '/') return null;
+
   const isActive = (path: string) => pathname.startsWith(path);
 
   // アクティブ時のラベルグラデーション共通スタイル

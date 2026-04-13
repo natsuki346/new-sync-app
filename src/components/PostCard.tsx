@@ -1,19 +1,13 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import type { Post } from '@/lib/mockData';
+import ReactionPicker from './ReactionPicker';
+import BottomSheet from './BottomSheet';
+import { translateText } from '@/lib/translation';
 
-const RAINBOW = 'linear-gradient(to right, #7C6FE8 0%, #D455A8 18%, #E84040 36%, #E8A020 52%, #48C468 68%, #2890D8 84%, #7C6FE8 100%)'
-
-// ── リアクション絵文字 ────────────────────────────────────────────
-const REACTION_DEFAULTS = ['❤️', '👍', '👏', '😂', '😭'];
-const REACTION_ALL = [
-  '❤️','👍','👏','😂','😭','🔥','😍','🥹','😊','🤩',
-  '😎','🥰','😆','🤣','😱','😢','😤','🫀','💫','⚡',
-  '✨','💥','🙏','💪','🤝','👀','🫶','💯','🎉','🎊',
-  '🌊','💎','👑','🚀','🌸','🍀','⭐','🌙','☀️','🌈',
-  '🎵','🎶','🎸','🏆','🥇','💌','📣','🔔','💬','🫧',
-];
+const RAINBOW = 'linear-gradient(to right, #7C6FE8 0%, #D455A8 18%, #E84040 36%, #E8A020 52%, #48C468 68%, #2890D8 84%, #7C6FE8 100%)';
 
 function useCountdown(expiresAt: number) {
   const [remaining, setRemaining] = useState(expiresAt - Date.now());
@@ -36,15 +30,16 @@ function useCountdown(expiresAt: number) {
 
 function CountdownTimer({ expiresAt }: { expiresAt: number }) {
   const { d, h, m, s, expired } = useCountdown(expiresAt);
+  const t = useTranslations('common');
 
-  if (expired) return <span style={{ color: '#ff4444', fontSize: 12 }}>期限切れ</span>;
+  if (expired) return <span style={{ color: '#ff4444', fontSize: 12 }}>{t('expired')}</span>;
 
   return (
     <div style={{
       display: 'flex',
       alignItems: 'center',
       gap: 4,
-      background: '#111',
+      background: 'var(--bg-secondary)',
       borderRadius: 8,
       padding: '4px 8px',
     }}>
@@ -70,43 +65,110 @@ function CountdownTimer({ expiresAt }: { expiresAt: number }) {
   );
 }
 
-interface FloatEmoji { id: number; emoji: string; x: number; delay: number }
-
-interface PostCardProps {
-  post:                Post;
-  onReply?:            (post: Post) => void;
-  onUserClick?:        () => void;
-  onHashtagClick?:     (tag: string) => void;
-  cardColor?:          string;
-  isReplyLocked?:      boolean;
-  hashtagBorderColor?: string;
+function stripHashtags(text: string): string {
+  return text.replace(/#[\w\u3040-\u9fff]+/g, '').replace(/\s+/g, ' ').trim();
 }
 
-export default function PostCard({ post, onReply, onUserClick, onHashtagClick, cardColor, isReplyLocked, hashtagBorderColor }: PostCardProps) {
-  const [reactedEmoji, setReactedEmoji] = useState<string | null>(null);
-  const [showPicker,   setShowPicker]   = useState(false);
-  const [expandAll,    setExpandAll]    = useState(false);
-  const [floatEmojis,  setFloatEmojis]  = useState<FloatEmoji[]>([]);
-  const floatId = useRef(0);
+interface PostCardProps {
+  post:                  Post;
+  onReply?:              (post: Post) => void;
+  onUserClick?:          () => void;
+  onHashtagClick?:       (tag: string) => void;
+  onReact?:              (emoji: string) => void;
+  cardColor?:            string;
+  isReplyLocked?:        boolean;
+  /** true のとき、リアクションボタンをグレーアウトして onReactionLocked を呼ぶ */
+  isReactionLocked?:     boolean;
+  /** リアクションが locked 状態でタップされたときのコールバック（トースト表示などに使う） */
+  onReactionLocked?:     () => void;
+  hashtagBorderColor?:   string;
+  initialReactedEmoji?:  string | null;
+  reactionCount?:        number;
+}
 
-  function handleReact(emoji: string) {
-    setReactedEmoji(emoji);
-    setShowPicker(false);
-    setExpandAll(false);
-    const newEmojis: FloatEmoji[] = Array.from({ length: 4 }, (_, i) => ({
-      id:    floatId.current++,
-      emoji,
-      x:     (Math.random() - 0.5) * 80,
-      delay: i * 85,
-    }));
-    setFloatEmojis((prev) => [...prev, ...newEmojis]);
-    const ids = new Set(newEmojis.map((e) => e.id));
-    setTimeout(() => setFloatEmojis((prev) => prev.filter((e) => !ids.has(e.id))), 1200);
-  }
+export default function PostCard({ post, onReply, onUserClick, onHashtagClick, onReact, cardColor, isReplyLocked, isReactionLocked, onReactionLocked, hashtagBorderColor, initialReactedEmoji, reactionCount }: PostCardProps) {
 
   const hasBg     = cardColor !== undefined && cardColor !== '';
   const bgColor   = hasBg ? cardColor : 'var(--surface)';
   const bdColor   = hasBg && cardColor !== 'transparent' ? 'rgba(255,255,255,0.15)' : 'var(--surface-2)';
+
+  const hashtagColor = typeof window !== 'undefined'
+    ? localStorage.getItem('sync_hashtag_color') || ''
+    : '';
+
+  // ── 翻訳機能 ──────────────────────────────────────────────────
+  const [isTranslated, setIsTranslated]     = useState(false);
+  const [translatedText, setTranslatedText] = useState('');
+  const [isTranslating, setIsTranslating]   = useState(false);
+
+  async function handleTranslate() {
+    if (isTranslated) {
+      setIsTranslated(false);
+      return;
+    }
+    if (translatedText) {
+      setIsTranslated(true);
+      return;
+    }
+    setIsTranslating(true);
+    try {
+      const result = await translateText(stripHashtags(post.content));
+      setTranslatedText(result);
+      setIsTranslated(true);
+    } catch {
+      // 翻訳失敗時は元テキストのまま
+    } finally {
+      setIsTranslating(false);
+    }
+  }
+
+  // ── 共有機能 ──────────────────────────────────────────────────
+  const [showShare, setShowShare] = useState(false);
+  const [shareToast, setShareToast] = useState('');
+
+  function showToast(msg: string) {
+    setShareToast(msg);
+    setTimeout(() => setShareToast(''), 2500);
+  }
+
+  const shareUrl  = typeof window !== 'undefined' ? `${window.location.origin}/post/${post.id}` : '';
+  const shareText = post.content;
+
+  const SHARE_ITEMS = [
+    {
+      icon: '🔗',
+      label: 'リンクをコピー',
+      action: async () => {
+        await navigator.clipboard.writeText(shareUrl);
+        setShowShare(false);
+        showToast('リンクをコピーしました！');
+      },
+    },
+    {
+      icon: '𝕏',
+      label: 'X（Twitter）',
+      action: () => {
+        window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`, '_blank');
+        setShowShare(false);
+      },
+    },
+    {
+      icon: '💬',
+      label: 'LINE',
+      action: () => {
+        window.open(`https://social-plugins.line.me/lineit/share?url=${encodeURIComponent(shareUrl)}`, '_blank');
+        setShowShare(false);
+      },
+    },
+    {
+      icon: '📘',
+      label: 'Facebook',
+      action: () => {
+        window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank');
+        setShowShare(false);
+      },
+    },
+  ];
 
   return (
     <article
@@ -120,7 +182,7 @@ export default function PostCard({ post, onReply, onUserClick, onHashtagClick, c
     >
       <div className="px-5 py-4">
 
-        {/* ヘッダー: アバター + ユーザー情報 + 時刻 */}
+        {/* ヘッダー: アバター + ユーザー情報 */}
         <div className="flex items-start gap-3 mb-3">
           <div
             className="w-9 h-9 rounded-full flex items-center justify-center text-lg flex-shrink-0 cursor-pointer active:opacity-70"
@@ -132,65 +194,131 @@ export default function PostCard({ post, onReply, onUserClick, onHashtagClick, c
           <div className="flex-1 min-w-0">
             <div className="flex items-baseline justify-between gap-2">
               <div
-                className="flex items-baseline gap-1.5 min-w-0 cursor-pointer active:opacity-70"
+                className="flex flex-col min-w-0 cursor-pointer active:opacity-70"
                 onClick={onUserClick}
               >
-                <span className="font-semibold text-sm" style={{ color: 'var(--foreground)' }}>
+                <span style={{ color: 'var(--foreground)', fontWeight: 600, fontSize: 14 }}>
                   {post.name}
                 </span>
-                <span className="text-xs" style={{ color: 'var(--muted)' }}>
+                <span style={{ color: 'var(--muted)', fontSize: 11, opacity: 0.6 }}>
                   {post.handle}
                 </span>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <span className="text-xs" style={{ color: 'var(--muted)' }}>
-                  {post.time}
-                </span>
-                {post.expiresAt != null && <CountdownTimer expiresAt={post.expiresAt} />}
-              </div>
+              {post.expiresAt != null && (
+                <div className="flex-shrink-0">
+                  <CountdownTimer expiresAt={post.expiresAt} />
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        {/* 本文 */}
+        {/* 本文（#タグ部分を除いて表示） */}
         <p
-          className="text-sm leading-relaxed whitespace-pre-line mb-3 pl-12"
+          className="text-sm leading-relaxed whitespace-pre-line mb-2 pl-12"
           style={{ color: 'rgba(255,255,255,0.85)' }}
         >
-          {post.content}
+          {isTranslated ? translatedText : stripHashtags(post.content)}
         </p>
 
-        {/* ハッシュタグ */}
-        <div className="flex flex-wrap gap-1.5 mb-3 pl-12">
-          {post.hashtags.map((tag) => (
-            <span
-              key={tag}
-              className="text-xs cursor-pointer transition-opacity duration-150 active:opacity-60"
-              style={hashtagBorderColor ? {
-                padding: '2px 10px',
-                borderRadius: 9999,
-                color: '#ffffff',
-                background: 'transparent',
-                border: `1.5px solid ${hashtagBorderColor}`,
-                display: 'inline-block',
-              } : {
-                padding: '2px 10px',
-                borderRadius: 9999,
-                color: '#ffffff',
-                background: `linear-gradient(var(--background), var(--background)) padding-box, ${RAINBOW} border-box`,
-                border: '1.5px solid transparent',
-                display: 'inline-block',
-              }}
-              onClick={(e) => { e.stopPropagation(); onHashtagClick?.(tag); }}
-            >
-              {tag}
-            </span>
-          ))}
+        {/* 翻訳ボタン */}
+        <div className="pl-12 mb-2">
+          <button
+            onClick={handleTranslate}
+            disabled={isTranslating}
+            style={{
+              display:      'inline-flex',
+              alignItems:   'center',
+              gap:          4,
+              background:   'none',
+              border:       '1px solid rgba(255,255,255,0.18)',
+              borderRadius: 20,
+              color:        isTranslated ? 'rgba(100,160,255,0.9)' : 'rgba(255,255,255,0.45)',
+              fontSize:     11,
+              padding:      '2px 10px',
+              cursor:       isTranslating ? 'default' : 'pointer',
+              transition:   'color 0.15s, border-color 0.15s',
+            }}
+          >
+            {isTranslating ? (
+              <>
+                <span style={{
+                  display:     'inline-block',
+                  width:       10,
+                  height:      10,
+                  border:      '1.5px solid rgba(255,255,255,0.3)',
+                  borderTop:   '1.5px solid #fff',
+                  borderRadius:'50%',
+                  animation:   'spin 0.7s linear infinite',
+                }} />
+                翻訳中…
+              </>
+            ) : isTranslated ? '元の言語に戻す' : '翻訳'}
+          </button>
         </div>
+
+        {/* ハッシュタグエリア */}
+        {post.hashtags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-3 pl-12">
+            {post.hashtags.map((tag) => (
+              <span
+                key={tag}
+                style={(hashtagColor || hashtagBorderColor) ? {
+                  background: 'transparent',
+                  border: `1.5px solid ${hashtagColor || hashtagBorderColor}`,
+                  color: '#ffffff',
+                  padding: '2px 10px',
+                  borderRadius: 9999,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  display: 'inline-block',
+                  cursor: 'pointer',
+                } : {
+                  background: 'linear-gradient(var(--surface), var(--surface)) padding-box, linear-gradient(90deg,#FF6B6B,#FFD93D,#6BCB77,#4D96FF,#9B59B6) border-box',
+                  border: '1.5px solid transparent',
+                  color: '#ffffff',
+                  padding: '2px 10px',
+                  borderRadius: 9999,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  display: 'inline-block',
+                  cursor: 'pointer',
+                }}
+                onClick={(e) => { e.stopPropagation(); onHashtagClick?.(tag); }}
+              >
+                {tag.startsWith('#') ? tag : `#${tag}`}
+              </span>
+            ))}
+          </div>
+        )}
+
 
         {/* アクションバー */}
         <div className="relative pl-12">
           <div className="flex items-center gap-5">
+
+            {/* リアクションピッカー / ロック状態 */}
+            {isReactionLocked ? (
+              <button
+                className="flex items-center transition-colors duration-150"
+                style={{ color: 'rgba(136,136,170,0.35)', cursor: 'default' }}
+                onClick={() => onReactionLocked?.()}
+              >
+                <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.6} stroke="currentColor" className="w-4 h-4">
+                  <path strokeLinecap="round"
+                    d="M15.182 15.182a4.5 4.5 0 01-6.364 0M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75z"
+                  />
+                </svg>
+              </button>
+            ) : (
+              <ReactionPicker
+                hashtagId={post.hashtags[0] ?? ''}
+                postId={post.id}
+                onReact={(emoji) => onReact?.(emoji)}
+                initialEmoji={initialReactedEmoji}
+                reactionCount={reactionCount}
+              />
+            )}
 
             {/* Reply ボタン */}
             <button
@@ -208,28 +336,11 @@ export default function PostCard({ post, onReply, onUserClick, onHashtagClick, c
               </svg>
             </button>
 
-            {/* リアクションボタン */}
-            <button
-              className="transition-all active:scale-90"
-              style={{
-                color: reactedEmoji ? 'var(--brand)' : 'var(--muted)',
-                fontSize: reactedEmoji ? 16 : undefined,
-              }}
-              onClick={() => { setShowPicker((v) => !v); setExpandAll(false); }}
-            >
-              {reactedEmoji ?? (
-                <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.6} stroke="currentColor" className="w-4 h-4">
-                  <path strokeLinecap="round"
-                    d="M15.182 15.182a4.5 4.5 0 01-6.364 0M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75z"
-                  />
-                </svg>
-              )}
-            </button>
-
             {/* シェアボタン */}
             <button
               className="ml-auto transition-colors active:opacity-60"
               style={{ color: 'var(--muted)' }}
+              onClick={() => setShowShare(true)}
             >
               <svg viewBox="0 0 24 24" fill="none" strokeWidth={1.6} stroke="currentColor" className="w-4 h-4">
                 <path strokeLinecap="round"
@@ -239,66 +350,89 @@ export default function PostCard({ post, onReply, onUserClick, onHashtagClick, c
             </button>
           </div>
 
-          {/* 絵文字浮き上がり */}
-          {floatEmojis.map((fe) => (
-            <div
-              key={fe.id}
-              className="absolute pointer-events-none select-none"
-              style={{
-                bottom: 16,
-                left: `calc(50% + ${fe.x}px)`,
-                fontSize: 22,
-                lineHeight: 1,
-                animation: `emojiFlyAnim 0.9s ${fe.delay}ms ease-out forwards`,
-              }}
-            >
-              {fe.emoji}
-            </div>
-          ))}
-
-          {/* インライン絵文字ピッカー */}
-          {showPicker && (
-            <div className="mt-2" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-1.5">
-                {REACTION_DEFAULTS.map((emoji) => (
-                  <button
-                    key={emoji}
-                    onClick={() => handleReact(emoji)}
-                    className="flex-1 flex items-center justify-center py-2 rounded-xl text-lg active:scale-90 transition-transform"
-                    style={{ background: 'var(--surface)', border: '1px solid var(--surface-2)' }}
-                  >
-                    {emoji}
-                  </button>
-                ))}
-                <button
-                  onClick={() => setExpandAll((v) => !v)}
-                  className="w-9 h-9 flex items-center justify-center rounded-xl text-xs font-bold active:scale-90 transition-transform flex-shrink-0"
-                  style={{ background: 'var(--surface)', border: '1px solid var(--surface-2)', color: 'var(--muted)' }}
-                >
-                  •••
-                </button>
-              </div>
-              {expandAll && (
-                <div
-                  className="flex flex-wrap gap-1 mt-1.5 max-h-36 overflow-y-auto p-2 rounded-xl"
-                  style={{ background: 'var(--surface)', border: '1px solid var(--surface-2)' }}
-                >
-                  {REACTION_ALL.map((emoji) => (
-                    <button
-                      key={emoji}
-                      onClick={() => handleReact(emoji)}
-                      className="w-9 h-9 flex items-center justify-center text-lg rounded-lg active:scale-90 transition-transform"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
       </div>
+
+      {/* ── トースト ── */}
+      {shareToast && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 90,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 9999,
+            background: 'rgba(30,30,30,0.97)',
+            color: '#fff',
+            fontSize: 13,
+            fontWeight: 500,
+            padding: '10px 20px',
+            borderRadius: 24,
+            whiteSpace: 'pre-wrap',
+            textAlign: 'center',
+            maxWidth: 300,
+            border: '1px solid rgba(255,255,255,0.12)',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+            pointerEvents: 'none',
+          }}
+        >
+          {shareToast}
+        </div>
+      )}
+
+      {/* ── 共有ボトムシート ── */}
+      <BottomSheet open={showShare} onClose={() => setShowShare(false)}>
+        <div style={{ padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 0 }}>
+          {/* タイトル */}
+          <div style={{ color: '#fff', fontWeight: 700, fontSize: 16, marginBottom: 20, textAlign: 'center' }}>
+            シェア
+          </div>
+
+          {/* 共有先リスト */}
+          {SHARE_ITEMS.map(item => (
+            <button
+              key={item.label}
+              onClick={item.action}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 16,
+                width: '100%',
+                background: 'none',
+                border: 'none',
+                borderBottom: '1px solid #222',
+                color: '#fff',
+                fontSize: 15,
+                padding: '16px 4px',
+                cursor: 'pointer',
+                textAlign: 'left',
+              }}
+            >
+              <span style={{ fontSize: 20, width: 28 }}>{item.icon}</span>
+              {item.label}
+            </button>
+          ))}
+
+          {/* キャンセル */}
+          <button
+            onClick={() => setShowShare(false)}
+            style={{
+              marginTop: 12,
+              width: '100%',
+              background: '#1a1a1a',
+              border: 'none',
+              borderRadius: 12,
+              color: '#aaa',
+              fontSize: 15,
+              padding: '14px',
+              cursor: 'pointer',
+            }}
+          >
+            キャンセル
+          </button>
+        </div>
+      </BottomSheet>
     </article>
   );
 }

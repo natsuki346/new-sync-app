@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { RAINBOW } from '@/lib/rainbow';
 
 export interface PassionItem {
@@ -13,6 +14,7 @@ const HEAT_DEFAULT_COUNT = 5;
 export function PassionGraph({ items }: { items: PassionItem[] }) {
   const [animated, setAnimated] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const t = useTranslations('common');
 
   useEffect(() => {
     const id = setTimeout(() => setAnimated(true), 60);
@@ -40,7 +42,7 @@ export function PassionGraph({ items }: { items: PassionItem[] }) {
           const textColor = isTop ? '#7C6FE8' : 'var(--muted)';
 
           return (
-            <div key={item.tag} className="flex items-center gap-2.5">
+            <div key={item.tag || idx} className="flex items-center gap-2.5">
               {/* タグ名 */}
               <span
                 className="text-[11px] font-medium flex-shrink-0 text-right"
@@ -88,7 +90,7 @@ export function PassionGraph({ items }: { items: PassionItem[] }) {
             background: 'none',
           }}
         >
-          {expanded ? '折りたたむ' : 'すべて表示'}
+          {expanded ? t('collapse') : t('showAll')}
         </button>
       )}
     </div>

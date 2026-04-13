@@ -2,7 +2,13 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { CONVERSATIONS, type Conversation } from '@/lib/mockData';
+import { useTranslations } from 'next-intl';
+import { type Conversation } from '@/lib/mockData';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
+
+// ── 開発用自動返信フラグ ──────────────────────────────────────────
+const DEV_AUTO_REPLY = false;
 
 // ── 型 ────────────────────────────────────────────────────────────
 
@@ -25,57 +31,194 @@ function nowTime() {
   return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+function fmtMsgTime(iso: string) {
+  const d = new Date(iso);
+  return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function fmtDateLabel(iso: string): string {
+  const d   = new Date(iso);
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === now.toDateString())       return 'Today';
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
 const AUTO_REPLIES = [
   '...', '😊', 'Nice!', 'That sounds fun!', 'For sure!',
   '🔥', 'lol', 'Yeah!', '👍', 'Really?', 'Agreed~',
   "Let's do it!", '😂', 'Same here', "Can't wait!",
 ];
 
-function buildInitialMessages(conv: Conversation): ChatMsg[] {
-  if (!conv.preview) return [];
-  return [
-    { id: 1, from: 'them', text: `Hey! It's ${conv.name} 👋`,           time: '14:20', isRead: true,  dateLabel: 'Yesterday' },
-    { id: 2, from: 'me',   text: 'Hey! Good to hear from you',           time: '14:22', isRead: true,  dateLabel: 'Yesterday' },
-    { id: 3, from: 'them', text: "Let's catch up soon",                  time: '14:24', isRead: true,  dateLabel: 'Yesterday' },
-    { id: 4, from: 'them', text: conv.preview,                           time: '09:10', isRead: true,  dateLabel: 'Today'     },
-    { id: 5, from: 'me',   text: "Thanks! Let's talk more soon",         time: '09:14', isRead: true,  dateLabel: 'Today'     },
-    { id: 6, from: 'them', text: "Definitely! When are you free next?",  time: '09:15', isRead: false, dateLabel: 'Today'     },
-  ];
-}
-
 // ── メインコンポーネント ──────────────────────────────────────────
 
 export default function ChatDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
-  const conv   = CONVERSATIONS.find((c) =>
-    c.id === params.id ||
-    c.name === params.id ||
-    c.handle === `@${params.id}`
-  ) ?? {
-    id: params.id,
-    avatar: '👤',
-    name: params.id,
-    handle: `@${params.id}`,
+  const { user } = useAuth();
+
+  const [convInfo, setConvInfo] = useState<Conversation>({
+    id:      params.id,
+    avatar:  '👤',
+    name:    '…',
     preview: '',
-    time: 'Now',
-    unread: false,
+    time:    'Now',
+    unread:  false,
     isGroup: false,
-  };
+  });
 
   const [input,        setInput]        = useState('');
-  const [messages,     setMessages]     = useState<ChatMsg[]>(() =>
-    conv ? buildInitialMessages(conv) : [],
-  );
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [messages,     setMessages]     = useState<ChatMsg[]>([]);
+  const [msgsLoading,  setMsgsLoading]  = useState(true);
+  const [settingsOpen,     setSettingsOpen]     = useState(false);
+  const [myBubbleColor,    setMyBubbleColor]    = useState('rainbow');
+  const [theirBubbleColor, setTheirBubbleColor] = useState('');
 
   const bottomRef      = useRef<HTMLDivElement>(null);
   const fileInputRef   = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
+  // チャット吹き出し色を localStorage から読み込む
+  useEffect(() => {
+    const my    = localStorage.getItem('sync_my_bubble_color');
+    const their = localStorage.getItem('sync_their_bubble_color');
+    if (my    !== null) setMyBubbleColor(my);
+    if (their !== null) setTheirBubbleColor(their);
+  }, []);
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // ── 会話情報取得 ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+
+    (async () => {
+      const { data, error } = await (supabase as any)
+        .from('conversations')
+        .select(`
+          id, type, name,
+          conversation_members (
+            user_id,
+            profiles (id, username, display_name, avatar_url)
+          )
+        `)
+        .eq('id', params.id)
+        .single();
+
+      if (cancelled || error || !data) return;
+
+      const members: any[] = data.conversation_members ?? [];
+      let info: Conversation;
+
+      if (data.type === 'dm') {
+        const other = members.find((m: any) => m.user_id !== user.id);
+        const prof  = other?.profiles;
+        info = {
+          id:      data.id,
+          avatar:  prof?.avatar_url   ?? '👤',
+          name:    prof?.display_name ?? 'Unknown',
+          handle:  prof ? `@${prof.username}` : undefined,
+          preview: '',
+          time:    'Now',
+          unread:  false,
+          isGroup: false,
+        };
+      } else {
+        const memberAvatars = members.map((m: any) => m.profiles?.avatar_url ?? '👤');
+        info = {
+          id:           data.id,
+          avatar:       memberAvatars[0] ?? '👥',
+          name:         data.name ?? 'Group',
+          preview:      '',
+          time:         'Now',
+          unread:       false,
+          isGroup:      true,
+          memberAvatars,
+        };
+      }
+
+      if (!cancelled) setConvInfo(info);
+    })();
+
+    return () => { cancelled = true; };
+  }, [params.id, user?.id]);
+
+  // ── メッセージ初期取得 ────────────────────────────────────────
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    setMsgsLoading(true);
+
+    (async () => {
+      const { data, error } = await (supabase as any)
+        .from('messages')
+        .select('id, content, message_type, image_url, created_at, user_id')
+        .eq('conversation_id', params.id)
+        .order('created_at', { ascending: true })
+        .limit(50);
+
+      if (cancelled) return;
+      if (error) { setMsgsLoading(false); return; }
+
+      const msgs: ChatMsg[] = (data ?? []).map((row: any, i: number) => ({
+        id:        i,
+        from:      row.user_id === user.id ? 'me' as const : 'them' as const,
+        text:      row.content    ?? undefined,
+        image:     row.image_url  ?? undefined,
+        time:      fmtMsgTime(row.created_at),
+        isRead:    true,
+        dateLabel: fmtDateLabel(row.created_at),
+      }));
+
+      if (!cancelled) {
+        setMessages(msgs);
+        setMsgsLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [params.id, user?.id]);
+
+  // ── Realtime メッセージ受信 ───────────────────────────────────
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = (supabase as any)
+      .channel(`chat-${params.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event:  'INSERT',
+          schema: 'public',
+          table:  'messages',
+          filter: `conversation_id=eq.${params.id}`,
+        },
+        (payload: any) => {
+          const row = payload.new;
+          if (row.user_id === user.id) return; // 自分の送信はスキップ
+
+          const newMsg: ChatMsg = {
+            id:        Date.now(),
+            from:      'them',
+            text:      row.content   ?? undefined,
+            image:     row.image_url ?? undefined,
+            time:      fmtMsgTime(row.created_at),
+            isRead:    true,
+            dateLabel: fmtDateLabel(row.created_at),
+          };
+
+          setMessages((prev) => [...prev, newMsg]);
+        },
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [params.id, user?.id]);
 
   // ── テキスト送信 ──────────────────────────────────────────────
   const sendMessage = useCallback(() => {
@@ -87,15 +230,27 @@ export default function ChatDetailPage() {
       { id: Date.now(), from: 'me' as const, text: txt, time: t, isRead: false, dateLabel: 'Today' },
     ]);
     setInput('');
-    const delay = 1000 + Math.random() * 1500;
-    setTimeout(() => {
-      const reply = AUTO_REPLIES[Math.floor(Math.random() * AUTO_REPLIES.length)];
-      setMessages((prev) => [
-        ...prev.map((m) => (m.from === 'me' ? { ...m, isRead: true } : m)),
-        { id: Date.now() + 1, from: 'them' as const, text: reply, time: nowTime(), isRead: true, dateLabel: 'Today' },
-      ]);
-    }, delay);
-  }, [input]);
+    if (user) {
+      (supabase.from('messages') as any).insert({
+        conversation_id: params.id,
+        user_id:         user.id,
+        content:         txt,
+        message_type:    'text',
+      }).then(({ error }: { error: unknown }) => {
+        if (error) console.error('[sendMessage]', error);
+      });
+    }
+    if (DEV_AUTO_REPLY) {
+      const delay = 1000 + Math.random() * 1500;
+      setTimeout(() => {
+        const reply = AUTO_REPLIES[Math.floor(Math.random() * AUTO_REPLIES.length)];
+        setMessages((prev) => [
+          ...prev.map((m) => (m.from === 'me' ? { ...m, isRead: true } : m)),
+          { id: Date.now() + 1, from: 'them' as const, text: reply, time: nowTime(), isRead: true, dateLabel: 'Today' },
+        ]);
+      }, delay);
+    }
+  }, [input, params.id, user]);
 
   // ── 画像送信 ──────────────────────────────────────────────────
   const sendImage = useCallback((dataUrl: string) => {
@@ -105,21 +260,42 @@ export default function ChatDetailPage() {
     ]);
   }, []);
 
-  const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      if (ev.target?.result) sendImage(ev.target.result as string);
-    };
-    reader.readAsDataURL(file);
+    if (!file || !user) return;
     e.target.value = '';
-  };
 
-  if (!conv) {
-    router.replace('/chat');
-    return null;
-  }
+    const ext  = file.name.split('.').pop();
+    const path = `chat/${user.id}/${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('chat-images')
+      .upload(path, file, { upsert: true });
+
+    if (uploadError) {
+      console.error('upload error:', JSON.stringify(uploadError));
+      return;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('chat-images')
+      .getPublicUrl(path);
+
+    const publicUrl = urlData.publicUrl;
+
+    // ローカル state に即反映
+    sendImage(publicUrl);
+
+    // DB に保存
+    const { error: insertError } = await (supabase.from('messages') as any).insert({
+      conversation_id: params.id,
+      user_id:         user.id,
+      content:         publicUrl,
+      message_type:    'image',
+      image_url:       publicUrl,
+    });
+    if (insertError) console.error('[sendImage]', insertError);
+  };
 
   // 日付区切りを挿入
   const rendered: Array<ChatMsg | DateSep> = messages.reduce<Array<ChatMsg | DateSep>>(
@@ -159,25 +335,25 @@ export default function ChatDetailPage() {
         </button>
 
         {/* アバター */}
-        {conv.isGroup ? (
-          <MiniGroupAvatar avatars={conv.memberAvatars ?? []} />
+        {convInfo.isGroup ? (
+          <MiniGroupAvatar avatars={convInfo.memberAvatars ?? []} />
         ) : (
           <div
             className="w-10 h-10 rounded-full flex items-center justify-center text-xl flex-shrink-0"
             style={{ background: 'var(--surface-2)', border: '1px solid var(--surface-2)' }}
           >
-            {conv.avatar}
+            {convInfo.avatar}
           </div>
         )}
 
         {/* 名前 + ステータス */}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold truncate" style={{ color: 'var(--foreground)' }}>
-            {conv.name}
+            {convInfo.name}
           </p>
           <p className="text-[10px] font-medium" style={{ color: 'rgba(136,136,170,0.55)' }}>
-            {conv.isGroup && conv.memberAvatars
-              ? `${conv.memberAvatars.length} members`
+            {convInfo.isGroup && convInfo.memberAvatars
+              ? `${convInfo.memberAvatars.length} members`
               : 'last seen recently'}
           </p>
         </div>
@@ -232,7 +408,11 @@ export default function ChatDetailPage() {
         className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-0.5"
         style={{ background: 'var(--background)' }}
       >
-        {rendered.map((item) => {
+        {msgsLoading ? (
+          <div className="flex items-center justify-center flex-1 py-20">
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>Loading…</p>
+          </div>
+        ) : rendered.map((item) => {
 
           if ('type' in item) {
             return (
@@ -276,7 +456,7 @@ export default function ChatDetailPage() {
                       className="w-8 h-8 rounded-full flex items-center justify-center text-sm"
                       style={{ background: 'var(--surface-2)' }}
                     >
-                      {conv.avatar}
+                      {convInfo.avatar}
                     </div>
                   ) : null}
                 </div>
@@ -294,16 +474,20 @@ export default function ChatDetailPage() {
                   style={
                     isMe
                       ? {
-                          background: 'var(--brand)',
+                          background: myBubbleColor === 'rainbow'
+                            ? 'linear-gradient(135deg, #FF6B6B, #FF8E53, #FFD93D, #6BCB77, #4D96FF, #9B59B6)'
+                            : myBubbleColor,
                           color: '#ffffff',
                           borderRadius: '18px 18px 4px 18px',
                           fontWeight: 500,
+                          boxShadow: '0 2px 8px rgba(155,89,182,0.3)',
                         }
                       : {
-                          background: 'var(--surface)',
+                          background: theirBubbleColor || 'rgba(255,255,255,0.08)',
                           color: 'var(--foreground)',
-                          border: '1px solid var(--surface-2)',
+                          border: '1px solid rgba(255,255,255,0.12)',
                           borderRadius: '18px 18px 18px 4px',
+                          backdropFilter: 'blur(8px)',
                         }
                   }
                 >
@@ -425,10 +609,13 @@ export default function ChatDetailPage() {
             /* 送信ボタン */
             <button
               onClick={sendMessage}
-              className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center active:scale-90 transition-all"
+              className="w-9 h-9 flex-shrink-0 flex items-center justify-center active:scale-90 transition-all"
               style={{
-                background: 'var(--brand)',
-                boxShadow: '0 0 14px rgba(255,26,26,0.55)',
+                background: myBubbleColor === 'rainbow'
+                  ? 'linear-gradient(135deg, #FF6B6B, #FF8E53, #FFD93D, #6BCB77, #4D96FF, #9B59B6)'
+                  : myBubbleColor,
+                borderRadius: '50%',
+                boxShadow: '0 2px 12px rgba(150,100,255,0.4)',
               }}
             >
               <svg viewBox="0 0 24 24" fill="#0d0d1a" className="w-4 h-4">
@@ -477,9 +664,9 @@ export default function ChatDetailPage() {
           className="absolute inset-0 z-50 settings-slide"
           style={{ background: 'var(--background)' }}
         >
-          {conv.isGroup
-            ? <GroupSettings  conv={conv} onClose={() => setSettingsOpen(false)} />
-            : <DmSettings     conv={conv} onClose={() => setSettingsOpen(false)} />
+          {convInfo.isGroup
+            ? <GroupSettings  conv={convInfo} onClose={() => setSettingsOpen(false)} />
+            : <DmSettings     conv={convInfo} onClose={() => setSettingsOpen(false)} />
           }
         </div>
       )}
@@ -546,9 +733,10 @@ function SettingsHeader({ title, onBack }: { title: string; onBack: () => void }
 // ── メディアプレースホルダーグリッド ─────────────────────────────
 
 function MediaGrid() {
+  const t = useTranslations('chat');
   return (
     <div>
-      <SectionLabel label="写真・動画" />
+      <SectionLabel label={t('mediaSection')} />
       <div className="grid grid-cols-3 gap-1 px-4">
         {Array.from({ length: 6 }).map((_, i) => (
           <div
@@ -565,7 +753,7 @@ function MediaGrid() {
         className="w-full text-center text-xs font-medium py-3 mt-1 active:opacity-60 transition-opacity"
         style={{ color: 'var(--brand)' }}
       >
-        すべて見る
+        {t('seeAll')}
       </button>
     </div>
   );
@@ -662,9 +850,10 @@ function ToggleRow({ icon, label }: { icon: React.ReactNode; label: string }) {
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 function DmSettings({ conv, onClose }: { conv: Conversation; onClose: () => void }) {
+  const t = useTranslations('chat');
   return (
     <div className="flex flex-col h-full">
-      <SettingsHeader title="トーク設定" onBack={onClose} />
+      <SettingsHeader title={t('talkSettings')} onBack={onClose} />
 
       <div className="flex-1 overflow-y-auto">
 
@@ -696,7 +885,7 @@ function DmSettings({ conv, onClose }: { conv: Conversation; onClose: () => void
               color: 'var(--brand)',
             }}
           >
-            プロフィールを見る
+            {t('viewProfile')}
           </button>
         </div>
 
@@ -708,15 +897,15 @@ function DmSettings({ conv, onClose }: { conv: Conversation; onClose: () => void
         <Divider />
 
         {/* 設定 */}
-        <SectionLabel label="設定" />
-        <ToggleRow icon="🔕" label="通知をオフにする" />
+        <SectionLabel label={t('settingsSection')} />
+        <ToggleRow icon="🔕" label={t('muteNotifications')} />
 
         <Divider />
 
         {/* 危険な操作 */}
-        <SectionLabel label="その他" />
-        <SettingsRow icon="🚫" label="ブロック"  color="#FF453A" />
-        <SettingsRow icon="⚠️" label="報告する" color="#FF453A" />
+        <SectionLabel label={t('otherSection')} />
+        <SettingsRow icon="🚫" label={t('block')}  color="#FF453A" />
+        <SettingsRow icon="⚠️" label={t('report')} color="#FF453A" />
 
         <div className="h-8" />
       </div>
@@ -728,20 +917,15 @@ function DmSettings({ conv, onClose }: { conv: Conversation; onClose: () => void
 // グループ設定画面
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-const MEMBER_NAMES: Record<string, string> = {
-  '🌸': 'yuki',  '🎵': 'mio',   '🎸': 'haru',  '🌊': 'sora',
-  '📸': 'ren',   '🎞️': 'tomo',  '📷': 'kei',   '☕': 'nagi',
-  '🖋️': 'ao',   '🌙': 'luna',  '💻': 'mai',   '🎨': 'kai',
-};
-
 function GroupSettings({ conv, onClose }: { conv: Conversation; onClose: () => void }) {
+  const t = useTranslations('chat');
   const [groupName, setGroupName] = useState(conv.name);
   const [editing,   setEditing]   = useState(false);
   const members = conv.memberAvatars ?? [];
 
   return (
     <div className="flex flex-col h-full">
-      <SettingsHeader title="グループ設定" onBack={onClose} />
+      <SettingsHeader title={t('groupSettings')} onBack={onClose} />
 
       <div className="flex-1 overflow-y-auto">
 
@@ -818,7 +1002,7 @@ function GroupSettings({ conv, onClose }: { conv: Conversation; onClose: () => v
         <Divider />
 
         {/* イベント情報 */}
-        <SectionLabel label="イベント" />
+        <SectionLabel label={t('eventSection')} />
         <div
           className="mx-4 rounded-2xl p-4 flex items-center gap-3"
           style={{ background: 'var(--surface)', border: '1px solid var(--surface-2)' }}
@@ -848,46 +1032,40 @@ function GroupSettings({ conv, onClose }: { conv: Conversation; onClose: () => v
 
         {/* メンバー一覧 */}
         <div className="flex items-center justify-between px-4 mb-2">
-          <SectionLabel label={`メンバー (${members.length})`} />
+          <SectionLabel label={`${t('members')} (${members.length})`} />
           <button
             className="text-xs font-semibold active:opacity-60 transition-opacity"
             style={{ color: 'var(--brand)' }}
           >
-            + 追加
+            {t('addMember')}
           </button>
         </div>
         <ul>
-          {members.map((av) => {
-            const name = MEMBER_NAMES[av] ?? 'unknown';
-            return (
-              <li key={av} className="flex items-center gap-3 px-4 py-2.5">
-                <div
-                  className="w-9 h-9 rounded-full flex items-center justify-center text-lg flex-shrink-0"
-                  style={{ background: 'var(--surface-2)' }}
-                >
-                  {av}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate" style={{ color: 'var(--foreground)' }}>
-                    {name}
-                  </p>
-                  <p className="text-[11px]" style={{ color: 'var(--muted)' }}>
-                    @{name}
-                  </p>
-                </div>
-                <button
-                  className="text-[11px] font-medium px-3 py-1 rounded-full active:opacity-60 transition-opacity"
-                  style={{
-                    background: 'rgba(255,69,58,0.08)',
-                    border: '1px solid rgba(255,69,58,0.2)',
-                    color: '#FF453A',
-                  }}
-                >
-                  削除
-                </button>
-              </li>
-            );
-          })}
+          {members.map((av, idx) => (
+            <li key={idx} className="flex items-center gap-3 px-4 py-2.5">
+              <div
+                className="w-9 h-9 rounded-full flex items-center justify-center text-lg flex-shrink-0"
+                style={{ background: 'var(--surface-2)' }}
+              >
+                {av}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate" style={{ color: 'var(--foreground)' }}>
+                  member
+                </p>
+              </div>
+              <button
+                className="text-[11px] font-medium px-3 py-1 rounded-full active:opacity-60 transition-opacity"
+                style={{
+                  background: 'rgba(255,69,58,0.08)',
+                  border: '1px solid rgba(255,69,58,0.2)',
+                  color: '#FF453A',
+                }}
+              >
+                {t('removeMember')}
+              </button>
+            </li>
+          ))}
         </ul>
 
         <Divider />
@@ -898,15 +1076,15 @@ function GroupSettings({ conv, onClose }: { conv: Conversation; onClose: () => v
         <Divider />
 
         {/* 設定 */}
-        <SectionLabel label="設定" />
-        <ToggleRow icon="🔕" label="通知をオフにする" />
+        <SectionLabel label={t('settingsSection')} />
+        <ToggleRow icon="🔕" label={t('muteNotifications')} />
 
         <Divider />
 
         {/* 危険な操作 */}
-        <SectionLabel label="その他" />
-        <SettingsRow icon="🚪" label="グループを退出" color="#FF453A" />
-        <SettingsRow icon="⚠️" label="報告する"       color="#FF453A" />
+        <SectionLabel label={t('otherSection')} />
+        <SettingsRow icon="🚪" label={t('leaveGroup')} color="#FF453A" />
+        <SettingsRow icon="⚠️" label={t('report')}     color="#FF453A" />
 
         <div className="h-8" />
       </div>

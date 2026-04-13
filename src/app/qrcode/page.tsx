@@ -1,10 +1,12 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { CURRENT_USER } from '@/lib/mockData';
 
 export default function QRCodePage() {
   const router = useRouter();
+  const t = useTranslations('qrcode');
 
   return (
     <div className="flex flex-col flex-1 min-h-0" style={{ background: 'var(--background)' }}>
@@ -28,7 +30,7 @@ export default function QRCodePage() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
           </svg>
         </button>
-        <h1 className="text-base font-black" style={{ color: 'var(--foreground)' }}>QRコード</h1>
+        <h1 className="text-base font-black" style={{ color: 'var(--foreground)' }}>{t('title')}</h1>
       </header>
 
       {/* コンテンツ */}
@@ -80,13 +82,13 @@ export default function QRCodePage() {
 
           {/* スキャン説明 */}
           <p className="text-center text-xs mt-4" style={{ color: 'var(--muted)' }}>
-            このQRコードをスキャンして<br />プロフィールを共有
+            {t('scanToShare')}
           </p>
         </div>
 
         {/* フォロー中ハッシュタグ */}
         <div className="w-full max-w-xs">
-          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--muted)' }}>フォロー中のハッシュタグ</p>
+          <p className="text-xs font-semibold mb-2" style={{ color: 'var(--muted)' }}>{t('followingHashtags')}</p>
           <div className="flex flex-wrap gap-1.5">
             {CURRENT_USER.hashtags.map((tag) => (
               <span

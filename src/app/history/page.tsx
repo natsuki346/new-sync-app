@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 // ── 型定義 ────────────────────────────────────────────────────────
 
@@ -28,64 +29,8 @@ interface ReminderSettings {
   morning: boolean;
 }
 
-// ── モックデータ ─────────────────────────────────────────────────
-
-const MOCK_HISTORY: HistoryEntry[] = [
-  {
-    id: 'h1', orderNumber: 'SYNC-2026-00142', date: '2026年3月12日',
-    status: 'applied', eventName: '夜桜ライブセッション 2026',
-    eventDate: '2026年4月5日（土）18:00〜',
-    eventTs: new Date('2026-04-05T18:00:00').getTime(),
-    venue: '代官山 UNIT', organizer: '桜音楽制作',
-    hashtags: ['#邦ロック', '#ライブ', '#夜桜'], price: 3500, ticketType: '一般チケット',
-  },
-  {
-    id: 'h2', orderNumber: 'SYNC-2026-00118', date: '2026年2月28日',
-    status: 'free', eventName: '渋谷フォトウォーク vol.12',
-    eventDate: '2026年3月20日（金）13:00〜',
-    eventTs: new Date('2026-03-20T13:00:00').getTime(),
-    venue: '渋谷スクランブル交差点 集合', organizer: '街角スナップ部',
-    hashtags: ['#写真', '#散歩', '#渋谷'], price: null, ticketType: '無料参加',
-  },
-  {
-    id: 'h3', orderNumber: 'SYNC-2026-00097', date: '2026年2月10日',
-    status: 'past', eventName: '新宿夜景撮影会',
-    eventDate: '2026年2月22日（日）19:00〜',
-    eventTs: new Date('2026-02-22T19:00:00').getTime(),
-    venue: '新宿都庁展望台', organizer: 'Night View Crew',
-    hashtags: ['#夜景', '#写真', '#新宿'], price: 1500, ticketType: 'ペア割チケット',
-  },
-  {
-    id: 'h4', orderNumber: 'SYNC-2026-00083', date: '2026年1月25日',
-    status: 'cancelled', eventName: '恵比寿デザイントーク',
-    eventDate: '2026年2月14日（土）14:00〜',
-    eventTs: new Date('2026-02-14T14:00:00').getTime(),
-    venue: '恵比寿ガーデンプレイス', organizer: 'デザイン同好会 TOKYO',
-    hashtags: ['#デザイン', '#アート', '#恵比寿'], price: 2000, ticketType: '一般チケット',
-  },
-  {
-    id: 'h5', orderNumber: 'SYNC-2025-00961', date: '2025年12月18日',
-    status: 'past', eventName: '年末カウントダウン DJイベント',
-    eventDate: '2025年12月31日（水）22:00〜',
-    eventTs: new Date('2025-12-31T22:00:00').getTime(),
-    venue: '六本木 ELE TOKYO', organizer: 'Club Night Japan',
-    hashtags: ['#DJ', '#クラブ', '#年末'], price: 5000, ticketType: 'VIPテーブル',
-  },
-  {
-    id: 'h6', orderNumber: 'SYNC-2025-00902', date: '2025年11月30日',
-    status: 'free', eventName: '下北沢インディーズマーケット',
-    eventDate: '2025年12月7日（日）11:00〜',
-    eventTs: new Date('2025-12-07T11:00:00').getTime(),
-    venue: '下北沢 BONUS TRACK', organizer: '下北沢音楽村',
-    hashtags: ['#インディーズ', '#音楽', '#下北沢'], price: null, ticketType: '無料参加',
-  },
-];
 
 // ── ステータス設定 ────────────────────────────────────────────────
-
-const STATUS_LABEL: Record<ApplicationStatus, string> = {
-  applied: '申込済み', cancelled: 'キャンセル', free: '無料参加', past: '終了',
-};
 
 const STATUS_STYLE: Record<ApplicationStatus, { bg: string; color: string }> = {
   applied:   { bg: 'rgba(255,26,26,0.15)',  color: 'var(--brand)' },
@@ -127,6 +72,7 @@ function calcCountdown(eventTs: number, now: number): CountdownResult {
 // ── カウントダウンUI ─────────────────────────────────────────────
 
 function CountdownBoxes({ cd }: { cd: CountdownResult }) {
+  const t        = useTranslations('history');
   const boxBg    = cd.urgent ? 'var(--brand)' : 'var(--surface)';
   const labelCol = cd.urgent ? 'rgba(255,26,26,0.7)' : 'var(--muted)';
 
@@ -152,7 +98,7 @@ function CountdownBoxes({ cd }: { cd: CountdownResult }) {
   }
 
   if (cd.today) return <span style={{ fontSize: 14, fontWeight: 800, color: 'var(--brand)' }}>TODAY</span>;
-  if (cd.past)  return <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>終了</span>;
+  if (cd.past)  return <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600 }}>{t('past')}</span>;
 
   return (
     <div className="flex items-center" style={{ gap: 3 }}>
@@ -196,11 +142,13 @@ function ReminderSheet({
   entry: HistoryEntry; settings: ReminderSettings;
   onSave: (s: ReminderSettings) => void; onClose: () => void;
 }) {
+  const t = useTranslations('history');
+  const tc = useTranslations('common');
   const [draft, setDraft] = useState<ReminderSettings>(settings);
   const rows: { key: keyof ReminderSettings; label: string; sub: string }[] = [
-    { key: 'week',    label: '1週間前',  sub: 'イベントの7日前に通知' },
-    { key: 'day',     label: '前日',     sub: 'イベント前日の夜に通知' },
-    { key: 'morning', label: '当日朝',   sub: '当日9時に通知' },
+    { key: 'week',    label: t('reminderWeek'),    sub: t('reminderWeekSub') },
+    { key: 'day',     label: t('reminderDay'),     sub: t('reminderDaySub') },
+    { key: 'morning', label: t('reminderMorning'), sub: t('reminderMorningSub') },
   ];
 
   return (
@@ -218,7 +166,7 @@ function ReminderSheet({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: 'var(--surface-2)' }} />
-        <p className="font-bold text-base mb-1" style={{ color: 'var(--foreground)' }}>リマインダー設定</p>
+        <p className="font-bold text-base mb-1" style={{ color: 'var(--foreground)' }}>{t('reminderTitle')}</p>
         <p className="text-xs mb-5" style={{ color: 'var(--muted)' }}>{entry.eventName}</p>
         <div className="flex flex-col mb-6" style={{ gap: 0, border: '1px solid var(--surface-2)', borderRadius: 14, overflow: 'hidden' }}>
           {rows.map((row, i) => (
@@ -238,7 +186,7 @@ function ReminderSheet({
           className="w-full py-3.5 rounded-xl font-bold text-sm"
           style={{ background: 'var(--brand)', color: '#000' }}
         >
-          保存
+          {tc('save')}
         </button>
       </div>
     </div>
@@ -248,6 +196,8 @@ function ReminderSheet({
 // ── QRモーダル ───────────────────────────────────────────────────
 
 function QRModal({ entry, onClose }: { entry: HistoryEntry; onClose: () => void }) {
+  const t = useTranslations('history');
+  const tc = useTranslations('common');
   return (
     <div
       className="absolute inset-0 z-50"
@@ -260,7 +210,7 @@ function QRModal({ entry, onClose }: { entry: HistoryEntry; onClose: () => void 
         onClick={(e) => e.stopPropagation()}
       >
         <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: 'var(--surface-2)' }} />
-        <p className="text-center font-bold text-base mb-1" style={{ color: 'var(--foreground)' }}>チケットQR</p>
+        <p className="text-center font-bold text-base mb-1" style={{ color: 'var(--foreground)' }}>{t('ticketQr')}</p>
         <p className="text-center text-xs mb-6" style={{ color: 'var(--muted)' }}>{entry.eventName}</p>
 
         <div className="w-full max-w-xs mx-auto mb-5">
@@ -292,9 +242,9 @@ function QRModal({ entry, onClose }: { entry: HistoryEntry; onClose: () => void 
 
         <div className="rounded-xl px-4 py-3 mb-5" style={{ background: 'var(--surface-2)' }}>
           {[
-            { label: '注文番号', value: entry.orderNumber },
-            { label: 'チケット種別', value: entry.ticketType },
-            { label: '開催日時', value: entry.eventDate },
+            { label: t('orderNumber'), value: entry.orderNumber },
+            { label: t('ticketType'), value: entry.ticketType },
+            { label: t('eventDate'), value: entry.eventDate },
           ].map((row, i, arr) => (
             <div key={row.label} className="flex justify-between" style={{ marginBottom: i < arr.length - 1 ? 6 : 0 }}>
               <span className="text-xs" style={{ color: 'var(--muted)' }}>{row.label}</span>
@@ -308,7 +258,7 @@ function QRModal({ entry, onClose }: { entry: HistoryEntry; onClose: () => void 
           className="w-full py-3.5 rounded-xl font-bold text-sm"
           style={{ background: 'var(--surface-2)', color: 'var(--foreground)' }}
         >
-          閉じる
+          {tc('close')}
         </button>
       </div>
     </div>
@@ -326,6 +276,10 @@ function HistoryCard({
   onShowQR:       (e: HistoryEntry) => void;
   onOpenReminder: (e: HistoryEntry) => void;
 }) {
+  const t = useTranslations('history');
+  const statusLabelMap: Record<ApplicationStatus, string> = {
+    applied: t('applied'), cancelled: t('cancelled'), free: t('free'), past: t('past'),
+  };
   const status      = STATUS_STYLE[entry.status];
   const isCancelled = entry.status === 'cancelled';
   const cd          = calcCountdown(entry.eventTs, now);
@@ -351,7 +305,7 @@ function HistoryCard({
           className="text-[10px] font-bold px-2 py-0.5 rounded-full"
           style={{ background: status.bg, color: status.color }}
         >
-          {STATUS_LABEL[entry.status]}
+          {statusLabelMap[entry.status]}
         </span>
       </div>
 
@@ -373,7 +327,7 @@ function HistoryCard({
               }}
             >
               <span style={{ fontSize: 12 }}>{hasReminder ? '🔔' : '🔕'}</span>
-              リマインダー
+              {t('reminder')}
             </button>
           )}
         </div>
@@ -417,7 +371,7 @@ function HistoryCard({
             className="w-full py-2.5 rounded-xl text-xs font-bold"
             style={{ background: 'var(--brand)', color: '#000' }}
           >
-            QRチケットを表示
+            {t('showQr')}
           </button>
         )}
       </div>
@@ -429,11 +383,15 @@ function HistoryCard({
 
 export default function HistoryPage() {
   const router = useRouter();
+  const t  = useTranslations('history');
+  const tc = useTranslations('common');
   const [now,           setNow]           = useState(() => Date.now());
   const [qrEntry,       setQrEntry]       = useState<HistoryEntry | null>(null);
   const [reminderEntry, setReminderEntry] = useState<HistoryEntry | null>(null);
   const [reminders,     setReminders]     = useState<Record<string, ReminderSettings>>({});
   const [yearFilter,    setYearFilter]    = useState<'2026' | '2025'>('2026');
+
+  const historyData: HistoryEntry[] = [];
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -444,7 +402,7 @@ export default function HistoryPage() {
     setReminders((prev) => ({ ...prev, [entryId]: settings }));
   }
 
-  const filtered = MOCK_HISTORY.filter((e) => e.date.startsWith(yearFilter));
+  const filtered = historyData.filter((e) => e.date.startsWith(yearFilter));
 
   return (
     <div className="flex flex-col flex-1 min-h-0 relative" style={{ background: 'var(--background)' }}>
@@ -469,7 +427,7 @@ export default function HistoryPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
             </svg>
           </button>
-          <h1 className="text-base font-black" style={{ color: 'var(--foreground)' }}>履歴</h1>
+          <h1 className="text-base font-black" style={{ color: 'var(--foreground)' }}>{t('title')}</h1>
         </div>
 
         <select
@@ -490,7 +448,7 @@ export default function HistoryPage() {
       {/* 件数 */}
       <div className="px-4 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--surface-2)' }}>
         <span className="text-xs" style={{ color: 'var(--muted)' }}>
-          {yearFilter}年 · {filtered.length}件
+          {t('countInfo', { year: yearFilter, count: filtered.length })}
         </span>
       </div>
 
@@ -499,7 +457,7 @@ export default function HistoryPage() {
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <span className="text-4xl">📭</span>
-            <p className="text-sm" style={{ color: 'var(--muted)' }}>申込履歴がありません</p>
+            <p className="text-sm" style={{ color: 'var(--muted)' }}>{t('noHistory')}</p>
           </div>
         ) : (
           filtered.map((entry) => (

@@ -2,9 +2,23 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { MOCK_USERS } from "@/lib/mockData";
+import { useTranslations } from "next-intl";
 import ReactionFloatingEffect from "@/components/ReactionFloatingEffect";
 import SyncLogo from "@/components/SyncLogo";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/lib/supabase";
+
+// ── GPS距離計算 ──────────────────────────────────────────────────────────
+
+function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.asin(Math.sqrt(a));
+}
 
 // ── 時間帯背景 ──────────────────────────────────────────────────────────
 
@@ -20,23 +34,6 @@ const TIME_BG: Record<ToD, string> = {
 const getToD = (h: number): ToD =>
   h >= 5 && h < 10 ? "morning" : h >= 10 && h < 17 ? "day" : h >= 17 && h < 20 ? "evening" : "night";
 
-// ── ダミーデータ ────────────────────────────────────────────────────────
-
-// handle は name（短縮名）を使用 → /profile/${name} でルーティング
-const FRIENDS_MOCK = MOCK_USERS
-  .filter((u) => u.isFriend)
-  .map((u) => ({ name: u.name, handle: u.name, avatar: u.avatar }));
-
-const MSGS = [
-  "神すぎる","泣いてる","最高かよ","鳥肌やばい","震えてる",
-  "叫びたい","魂が揺れる","やばすぎ","感動した","泣きそう",
-  "声でない","音が刺さる","心が震える","涙止まらん","生きてる",
-  "全身鳥肌","また来たい","好きすぎる","今日最高","絶対泣く",
-  "前の熱量","声が枯れそう","この感覚","なんかもう泣いてる",
-  "この空間最高","誰かと分かち合いたい","もう帰りたくない",
-  "今日来てよかった","語彙力が消えた","時間よ止まれ",
-];
-const AVATARS = ["🌸","🎨","📸","🖊️","💻","☕","🌙","⭐","🎸","🌿","🎵","🌊","🏄","🎮","🎧","🌺","🦋","🎻","🧘","🎪","🦊","🌈","💫","🎭","🍀"];
 
 // ── 定数 ────────────────────────────────────────────────────────────────
 
@@ -49,12 +46,15 @@ const DANGER_THRESHOLD = 5;       // 残り5秒で消滅予兆
 const RESTITUTION      = 0.4;     // 左右壁バウンド係数
 const BUBBLE_H         = 40;      // バブル高さ概算（px）
 const HEADER_H         = 48;      // ヘッダー高さ（px）
-const BURST_LINE_Y     = 60;      // 破裂ライン（画面上端からのpx）— ここにBubble上辺が達したら破裂
+let BURST_LINE_Y       = 60;      // 破裂ライン（画面上端からのpx）— ヘッダー高さで動的に更新
 const SAFE_MARGIN      = 80;      // レーン内重なり防止マージン（px）
 const LANE_SAFE_SEC    = 2.0;     // 同じ列に出す最小間隔（秒）
 
 // 7列レーン（幅比率）
 const LANES = [0.06, 0.20, 0.34, 0.48, 0.62, 0.76, 0.90];
+
+// 開発用：自動バブル生成（本番では false にする）
+const DEV_AUTO_SPAWN = false;
 
 const REACTION_MESSAGES = [
   "一期一会",
@@ -93,7 +93,7 @@ interface Bubble {
   lane:      number;
   left:      number;
   width:     number;
-  startTime: number;
+  createdAt: number;  // Date.now() at spawn（壁時計）
   vx:        number;
   vy:        number;
   timeLeft:  number;
@@ -311,6 +311,7 @@ function BubbleActionMenu({ menu, onReact, onDm, onProfile, onClose }: {
   onProfile: () => void;
   onClose:   () => void;
 }) {
+  const t = useTranslations('bubble');
   const vw = typeof window !== "undefined" ? window.innerWidth  : 390;
   const vh = typeof window !== "undefined" ? window.innerHeight : 844;
   const MARGIN = 10;
@@ -394,7 +395,7 @@ function BubbleActionMenu({ menu, onReact, onDm, onProfile, onClose }: {
           style={{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"9px 12px", borderRadius:12, marginBottom:8, background:"rgba(17,138,178,0.10)", border:"1px solid rgba(17,138,178,0.22)", cursor:"pointer", WebkitTapHighlightColor:"transparent", boxSizing:"border-box" }}
         >
           <span style={{ fontSize:15 }}>✉️</span>
-          <span style={{ fontSize:13, fontWeight:600, color:"#118AB2" }}>DMを送る</span>
+          <span style={{ fontSize:13, fontWeight:600, color:"#118AB2" }}>{t('sendDm')}</span>
         </button>
 
         {/* プロフィールを見る */}
@@ -403,7 +404,7 @@ function BubbleActionMenu({ menu, onReact, onDm, onProfile, onClose }: {
           style={{ display:"flex", alignItems:"center", gap:8, width:"100%", padding:"9px 12px", borderRadius:12, background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.10)", cursor:"pointer", WebkitTapHighlightColor:"transparent", boxSizing:"border-box" }}
         >
           <span style={{ fontSize:15 }}>👤</span>
-          <span style={{ fontSize:13, fontWeight:600, color:"rgba(255,255,255,0.80)" }}>プロフィールを見る</span>
+          <span style={{ fontSize:13, fontWeight:600, color:"rgba(255,255,255,0.80)" }}>{t('viewProfile')}</span>
         </button>
       </div>
     </>
@@ -419,6 +420,7 @@ function DMSheet({ state, message, onMessageChange, onSend, onClose }: {
   onSend:          () => void;
   onClose:         () => void;
 }) {
+  const t = useTranslations('bubble');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [closing, setClosing] = useState(false);
 
@@ -468,7 +470,7 @@ function DMSheet({ state, message, onMessageChange, onSend, onClose }: {
             <span style={{ fontSize:20 }}>{state.userIcon}</span>
             <span style={{ fontSize:13, color:"rgba(255,255,255,0.60)" }}>
               <span style={{ color:"#FF1A1A", fontWeight:700 }}>@{state.userName}</span>
-              {" さんにDM"}
+              {t('dmTo')}
             </span>
           </div>
           <button
@@ -490,7 +492,7 @@ function DMSheet({ state, message, onMessageChange, onSend, onClose }: {
             ref={textareaRef}
             value={message}
             onChange={e => onMessageChange(e.target.value)}
-            placeholder="メッセージを入力..."
+            placeholder={t('messagePlaceholder')}
             rows={4}
             style={{
               width:              "100%",
@@ -530,7 +532,7 @@ function DMSheet({ state, message, onMessageChange, onSend, onClose }: {
               WebkitTapHighlightColor:"transparent",
             }}
           >
-            送信
+            {t('send')}
           </button>
         </div>
       </div>
@@ -538,10 +540,33 @@ function DMSheet({ state, message, onMessageChange, onSend, onClose }: {
   );
 }
 
+// ── ライブ設計：時間はコンポーネント外でも進み続ける ──────────────────────
+
+/** アプリ起動時点の壁時計（ページリロードでリセット） */
+const LIVE_START_TIME = Date.now();
+
+type PhysicsState = {
+  x: number; y: number; vx: number; vy: number;
+  timeLeft: number; width: number; isOwn: boolean; lane: number; paused: boolean;
+  createdAt: number;       // Date.now() at spawn（壁時計）
+  pausedElapsed: number;   // 累積 pause 秒数
+  pausedAt: number | null; // Date.now() at pause start（壁時計）
+};
+
+let _savedBubbles: Bubble[]                  = [];
+let _savedPhysics: Map<string, PhysicsState> = new Map();
+let _savedEmojiId                            = 0;
+let _savedMsgId                              = 0;
+let _savedLaneLastUsed: number[]             = new Array(LANE_COUNT).fill(0);
+let _lastUnmountTime                         = 0; // Date.now() at last unmount
+let _lastVisitTime                           = Date.now(); // タブ切り替え追跡用
+
 // ── メインコンポーネント ────────────────────────────────────────────────
 
 export default function BubblePage() {
+  const t = useTranslations('bubble');
   const router = useRouter();
+  const { user, profile, loading } = useAuth();
   const [tod,           setTod]          = useState<ToD>(() => getToD(new Date().getHours()));
   const [bubbles,       setBubbles]      = useState<Bubble[]>([]);
   const [popBursts,     setPopBursts]    = useState<PopBurst[]>([]);
@@ -556,7 +581,7 @@ export default function BubblePage() {
   const [dmMessage,       setDmMessage]      = useState("");
   const [toastMsg,        setToastMsg]       = useState<string | null>(null);
   const [postCount,       setPostCount]      = useState(0);
-  const [viewerCount,     setViewerCount]    = useState(() => 5 + Math.floor(Math.random() * 496));
+  const [viewerCount,     setViewerCount]    = useState(0);
   const [bubbleBorderColor, setBubbleBorderColor] = useState('#FF1A1A');
 
   const laneLastUsedRef  = useRef<number[]>(new Array(LANE_COUNT).fill(0));
@@ -565,11 +590,7 @@ export default function BubblePage() {
   const msgIdRef         = useRef(0);
   const lastReactionMsgIdx = useRef(-1);
   const fieldRef         = useRef<HTMLDivElement>(null);
-  const physicsRef       = useRef<Map<string, {
-    x: number; y: number; vx: number; vy: number;
-    timeLeft: number; width: number; isOwn: boolean; lane: number; paused: boolean;
-    startTime: number; pausedElapsed: number; pausedAt: number | null;
-  }>>(new Map());
+  const physicsRef       = useRef<Map<string, PhysicsState>>(new Map());
   const bubbleDivRefs    = useRef<Map<string, HTMLDivElement>>(new Map());
   const bubbleTimesRef   = useRef<Map<string, number>>(new Map());
   const [bubbleTimes,   setBubbleTimes]  = useState<Map<string, number>>(new Map());
@@ -579,11 +600,26 @@ export default function BubblePage() {
   const focusedBubbleIdRef   = useRef<string | null>(null);
   const audioCtxRef          = useRef<AudioContext | null>(null);
   const playSoundRef     = useRef({ spawn: () => {}, burst: () => {} });
+  const catchUpFnRef     = useRef<(elapsedSec: number) => void>(() => {});
+  const headerRef        = useRef<HTMLDivElement>(null);
+
+  // ヘッダー高さを動的に取得して BURST_LINE_Y を更新
+  useEffect(() => {
+    if (headerRef.current) {
+      BURST_LINE_Y = headerRef.current.offsetHeight;
+    }
+  }, []);
+
+  // viewerCount: マウント時にクライアントサイドでのみ初期値セット → Hydrationエラー回避
+  useEffect(() => {
+    setViewerCount(50 + Math.floor(Math.random() * 451));
+  }, []);
 
   // viewerCount ゆっくり増減
   useEffect(() => {
     const interval = setInterval(() => {
       setViewerCount(prev => {
+        if (prev === 0) return prev; // 初期化前は更新しない
         const delta     = Math.floor(Math.random() * 5) + 1;
         const direction = Math.random() > 0.5 ? 1 : -1;
         return Math.min(500, Math.max(5, prev + delta * direction));
@@ -616,6 +652,83 @@ export default function BubblePage() {
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  // マウント時：ライブ状態を復元（離れていた時間も時間が進んでいる）
+  useEffect(() => {
+    emojiIdRef.current      = _savedEmojiId;
+    msgIdRef.current        = _savedMsgId;
+    laneLastUsedRef.current = [..._savedLaneLastUsed];
+
+    if (_savedBubbles.length > 0) {
+      const now      = Date.now();
+      const awaySec  = _lastUnmountTime > 0 ? (now - _lastUnmountTime) / 1000 : 0;
+      const alive: Bubble[] = [];
+
+      _savedBubbles.forEach(b => {
+        const age = (now - b.createdAt) / 1000;
+        if (age >= BUBBLE_LIFETIME) return; // ライブ中に寿命が尽きたバブル
+
+        const s = _savedPhysics.get(b.id);
+        if (!s) return;
+
+        // 離れていた時間分だけ y 座標を進める（vy は定速上昇）
+        const advancedY = s.y + s.vy * awaySec;
+        if (advancedY <= BURST_LINE_Y) return; // 既に破裂ラインを超えていた
+
+        physicsRef.current.set(b.id, {
+          ...s,
+          y:        advancedY,
+          timeLeft: BUBBLE_LIFETIME - age + s.pausedElapsed,
+          paused:   false,
+          pausedAt: null,
+        });
+        alive.push(b);
+      });
+
+      if (alive.length > 0) setBubbles(alive);
+
+      // キャッチアップ：catchUpFnRef が設定されてから呼ぶ（0ms遅延）
+      if (awaySec > 2) {
+        setTimeout(() => catchUpFnRef.current(awaySec), 0);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // アンマウント時：ライブ状態を保存
+  useEffect(() => {
+    return () => {
+      _savedBubbles      = [...bubblesRef.current];
+      _savedPhysics      = new Map(physicsRef.current);
+      _savedEmojiId      = emojiIdRef.current;
+      _savedMsgId        = msgIdRef.current;
+      _savedLaneLastUsed = [...laneLastUsedRef.current];
+      _lastUnmountTime   = Date.now();
+      _lastVisitTime     = Date.now();
+    };
+  }, []);
+
+  // catchUpFnRef（タブ復帰時キャッチアップ）— モックデータ廃止につきno-op
+  useEffect(() => {
+    catchUpFnRef.current = (_elapsedSec: number) => { /* no-op */ };
+  });
+
+  // タブ切り替え・画面ロック時のライブ感維持（visibilitychange）
+  useEffect(() => {
+    const handle = () => {
+      if (document.visibilityState === 'visible') {
+        const now     = Date.now();
+        const elapsed = (now - _lastVisitTime) / 1000;
+        _lastVisitTime = now;
+        if (elapsed > 2) catchUpFnRef.current(elapsed);
+      } else {
+        // 画面を離れる瞬間の時刻を記録
+        _lastVisitTime = Date.now();
+      }
+    };
+    document.addEventListener('visibilitychange', handle);
+    return () => document.removeEventListener('visibilitychange', handle);
   }, []);
 
   // 星・大気（クライアントサイドのみ生成）
@@ -655,10 +768,6 @@ export default function BubblePage() {
   useEffect(() => {
     const id = setInterval(() => {
       setBubbleTimes(new Map(bubbleTimesRef.current));
-      // [DEBUG] bubble.y vs BURST_LINE_Y の確認（後で削除してOK）
-      physicsRef.current.forEach((state, bid) => {
-        console.log(`[bubble ${bid.slice(0,5)}] y=${state.y.toFixed(1)} BURST_LINE_Y=${BURST_LINE_Y} diff=${(state.y - BURST_LINE_Y).toFixed(1)}px timeLeft=${state.timeLeft.toFixed(1)}s`);
-      });
     }, 1000);
     return () => clearInterval(id);
   }, []);
@@ -800,11 +909,12 @@ export default function BubblePage() {
       const toFade: string[] = [];
 
       physicsRef.current.forEach((state, id) => {
-        // Date.now()ベースでtimeLeftを計算（pause中の経過時間は除外）
+        // 壁時計（Date.now）ベースで timeLeft を計算（pause中の経過を除外）
+        const wallNow    = Date.now();
         const pausedTotal = state.paused && state.pausedAt != null
-          ? state.pausedElapsed + (now - state.pausedAt) / 1000
+          ? state.pausedElapsed + (wallNow - state.pausedAt) / 1000
           : state.pausedElapsed;
-        state.timeLeft = BUBBLE_LIFETIME - (now - state.startTime) / 1000 + pausedTotal;
+        state.timeLeft = BUBBLE_LIFETIME - (wallNow - state.createdAt) / 1000 + pausedTotal;
         bubbleTimesRef.current.set(id, state.timeLeft);
 
         // 座標ベース破裂判定: state.y はコンテナ座標 → BURST_LINE_Y と直接比較
@@ -929,17 +1039,16 @@ export default function BubblePage() {
     const initVy = -((initY - BURST_LINE_Y) / BUBBLE_LIFETIME);
     const id     = makeId();
 
-    const randomFriend = FRIENDS_MOCK[Math.floor(Math.random() * FRIENDS_MOCK.length)];
     const b: Bubble = {
       id,
       text:      text.trim(),
-      avatar:    avatar ?? (isOwn ? "🌟" : randomFriend.avatar),
-      handle:    isOwn ? 'you' : randomFriend.handle,
+      avatar:    avatar ?? (isOwn ? "🌟" : "👤"),
+      handle:    isOwn ? 'you' : 'user',
       isOwn,
       lane:      laneIdx,
       left:      fw > 0 ? (initX / fw) * 100 : 5,
       width,
-      startTime: Date.now(),
+      createdAt: Date.now(),
       vx:        initVx,
       vy:        initVy,
       timeLeft:  BUBBLE_LIFETIME,
@@ -953,48 +1062,27 @@ export default function BubblePage() {
     physicsRef.current.set(id, {
       x: initX, y: initY, vx: initVx, vy: initVy,
       timeLeft: BUBBLE_LIFETIME, width, isOwn, lane: laneIdx, paused: false,
-      startTime: performance.now(), pausedElapsed: 0, pausedAt: null,
+      createdAt: Date.now(), pausedElapsed: 0, pausedAt: null,
     });
     playSoundRef.current.spawn();
 
-    // 自分の投稿時 autoReaction（ローカルシミュレーション）
-    if (isOwn) {
-      setTimeout(() => {
-        const emoji = REACT_EMOJIS[Math.floor(Math.random() * REACT_EMOJIS.length)];
-        const newEmojis: FloatingEmoji[] = Array.from({ length: 3 }, (_, i) => ({
-          id:    emojiIdRef.current++,
-          left:  (initX / fw) * 100 + (Math.random() - 0.5) * 10,
-          emoji,
-          size:  14 + Math.random() * 10,
-          delay: i * 100,
-        }));
-        setFloatingEmojis(prev => [...prev, ...newEmojis]);
-        const ids = new Set(newEmojis.map(fe => fe.id));
-        setTimeout(() => setFloatingEmojis(prev => prev.filter(fe => !ids.has(fe.id))), 2000);
-      }, 500);
-    }
-
-    // FIFO: MAX_BUBBLES超過時は最古を強制破裂してから削除
+    // FIFO: MAX_BUBBLES超過時は最古に bubblePop を適用してから削除
     const currentBubbles = bubblesRef.current;
     if (currentBubbles.length >= MAX_BUBBLES) {
-      const oldest  = currentBubbles[0];
-      const oldState = physicsRef.current.get(oldest.id);
-      if (oldState) {
-        triggerPopBurstRef.current(
-          oldState.x + oldState.width / 2,
-          oldState.y + BUBBLE_H / 2,
-        );
-      }
-      const oldEl = bubbleDivRefs.current.get(oldest.id);
+      const oldest = currentBubbles[0];
+      const oldEl  = bubbleDivRefs.current.get(oldest.id);
       if (oldEl) {
-        oldEl.style.transition = "none";
-        oldEl.style.opacity    = "0";
-        oldEl.style.transform  = (oldEl.style.transform ?? "") + " scale(0)";
+        oldEl.style.animation    = "bubblePop 0.3s ease-out forwards";
+        oldEl.style.pointerEvents = "none";
       }
       physicsRef.current.delete(oldest.id);
       bubbleTimesRef.current.delete(oldest.id);
-      requestAnimationFrame(() => bubbleDivRefs.current.delete(oldest.id));
-      setBubbles(prev => [...prev.filter(p => p.id !== oldest.id), b]);
+      setTimeout(() => {
+        bubbleDivRefs.current.delete(oldest.id);
+        setBubbles(prev => prev.filter(p => p.id !== oldest.id));
+      }, 350);
+      // 新バブルは即座に追加（削除アニメーション完了を待たない）
+      setBubbles(prev => [...prev, b]);
     } else {
       setBubbles(prev => [...prev, b]);
     }
@@ -1004,32 +1092,144 @@ export default function BubblePage() {
   const addBubbleRef = useRef(addBubble);
   useEffect(() => { addBubbleRef.current = addBubble; }, [addBubble]);
 
-  // 自動生成
+  // ゲストモード: ユーザー未ログイン時にモックバブルを表示
   useEffect(() => {
-    let tid: ReturnType<typeof setTimeout> | null = null;
-    const scheduleNext = () => {
-      const delay = 400 + Math.random() * 1200;
-      tid = setTimeout(() => {
-        // フォーカス中は新規Bubble生成を停止
-        if (!focusedBubbleIdRef.current) {
-          addBubbleRef.current(
-            MSGS[Math.floor(Math.random() * MSGS.length)],
-            false,
-            AVATARS[Math.floor(Math.random() * AVATARS.length)],
-          );
-        }
-        scheduleNext();
-      }, delay);
-    };
-    scheduleNext();
-    return () => { if (tid !== null) clearTimeout(tid); };
+    if (loading) return;       // セッション確認中は待つ
+    if (user !== null) return; // ログイン済みはスキップ
+
+    const MOCK_TEXTS = [
+      '今日のランチ美味しかった🍜',
+      '渋谷で音楽イベントやってる！',
+      '誰かボドゲやりたい人いる？🎲',
+      'この近くでおすすめのカフェある？',
+      '今夜飲みいける人！🍻',
+    ];
+    const MOCK_AVATARS = ['🍜', '🎵', '🎲', '☕', '🍻'];
+
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    MOCK_TEXTS.forEach((text, i) => {
+      timers.push(setTimeout(() => {
+        addBubbleRef.current(text, false, MOCK_AVATARS[i]);
+      }, i * 900));
+    });
+    return () => timers.forEach(clearTimeout);
+  }, [loading, user]);
+
+  // 自動生成（DEV_AUTO_SPAWN=true のときのみ動作）
+  useEffect(() => {
+    if (!DEV_AUTO_SPAWN) return;
+    // DEV_AUTO_SPAWN = false のため実行されない
   }, []);
 
-  function handleSend() {
+  // Realtime: 他ユーザーのバブルをリアルタイム受信
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel('bubbles-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event:  'INSERT',
+          schema: 'public',
+          table:  'bubbles',
+          // filter は Supabase Realtime の制限でeq/neqはサーバーフィルタが要 Realtime RLSに依存する場合がある
+          // ここでは受信後に自分のものを除外する
+        },
+        async (payload) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const row = (payload.new as any);
+
+          // 自分のバブルは無視
+          if (row.user_id === user.id) return;
+
+          // 期限切れチェック
+          if (row.expires_at && new Date(row.expires_at) < new Date()) return;
+
+          // 距離フィルター：自分の位置を取得して50m以内のみ表示
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data: myProfile } = await (supabase as any)
+            .from('profiles')
+            .select('lat, lng')
+            .eq('id', user.id)
+            .single();
+
+          // 距離フィルター（ネイティブ化後にBluetoothに置き換え予定）
+          const ENABLE_GPS_FILTER = false;
+
+          if (ENABLE_GPS_FILTER && row.lat && row.lng && myProfile?.lat && myProfile?.lng) {
+            const dist = distanceMeters(myProfile.lat, myProfile.lng, row.lat, row.lng);
+            if (dist > 50) return;
+          }
+
+          // 送信者のプロフィールを取得
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data: prof } = await (supabase as any)
+            .from('profiles')
+            .select('username, display_name, avatar_url')
+            .eq('id', row.user_id)
+            .single();
+
+          // 既存の addBubble に流し込む（物理演算・表示ロジックはそのまま）
+          const avatar = (prof as any)?.avatar_url ?? '👤';
+          addBubbleRef.current(row.content, false, avatar);
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user]);
+
+  async function handleSend() {
     if (!input.trim()) return;
-    addBubble(input, true);
+    const text = input.trim();
+
+    // AIスキャン（ブロック判定）
+    try {
+      const scanRes = await fetch('/api/scan-post', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ text }),
+      });
+      const { blocked, reason } = await scanRes.json();
+      console.log('[bubbleScan] レスポンス:', { blocked, reason });
+      if (blocked) {
+        alert(`投稿できません：${reason}`);
+        return;
+      }
+    } catch (e) {
+      console.error('[bubbleScan] スキャンエラー:', e);
+      // スキャンエラー時は投稿を通す
+    }
+
+    addBubble(text, true);
     setInput("");
-    setPostCount(prev => prev + 1);
+
+    // Supabaseに保存（ログイン済みのみ）
+    if (user) {
+      // profilesから現在位置を取得
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: profileGps } = await (supabase as any)
+        .from('profiles')
+        .select('lat, lng')
+        .eq('id', user.id)
+        .single();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase.from('bubbles') as any).insert({
+        user_id:            user.id,
+        content:            text,
+        hashtags:           [],
+        color:              null,
+        session_id:         null,
+        is_offline_created: false,
+        expires_at:         new Date(Date.now() + 20 * 1000).toISOString(),
+        lat:                profileGps?.lat ?? null,
+        lng:                profileGps?.lng ?? null,
+        radius:             50,
+      });
+      if (error) console.error('[bubble] insert error:', error);
+    }
   }
 
   // 共通：Bubbleを一時停止（フォーカス演出も同時起動）
@@ -1037,7 +1237,7 @@ export default function BubblePage() {
     const state = physicsRef.current.get(id);
     if (state && !state.paused) {
       state.paused   = true;
-      state.pausedAt = performance.now();
+      state.pausedAt = Date.now();
     }
     setFocusedBubbleId(id);
   }
@@ -1047,7 +1247,7 @@ export default function BubblePage() {
     const state = physicsRef.current.get(id);
     if (state && state.paused) {
       if (state.pausedAt != null) {
-        state.pausedElapsed += (performance.now() - state.pausedAt) / 1000;
+        state.pausedElapsed += (Date.now() - state.pausedAt) / 1000;
         state.pausedAt = null;
       }
       state.paused = false;
@@ -1163,7 +1363,7 @@ export default function BubblePage() {
     if (dmSheet) resumeBubble(dmSheet.bubbleId);
     setDmSheet(null);
     setDmMessage("");
-    setToastMsg("DMを送りました 💬");
+    setToastMsg(t('dmSent'));
     setTimeout(() => setToastMsg(null), 1500);
   }
 
@@ -1173,7 +1373,7 @@ export default function BubblePage() {
     <div style={{ position:"relative", display:"flex", flexDirection:"column", height:"100dvh", overflow:"hidden", background:"#0d0d1a" }}>
 
       {/* ヘッダー */}
-      <header style={{
+      <header ref={headerRef} style={{
         position:"sticky", top:0, flexShrink:0,
         width:"100%", height:"48px",
         display:"flex", justifyContent:"space-between", alignItems:"center",
@@ -1187,7 +1387,7 @@ export default function BubblePage() {
             <span style={{ color:"rgba(255,255,255,0.7)", fontSize:11 }}>{viewerCount.toLocaleString()} viewing</span>
           </span>
           <span style={{ color:"rgba(255,255,255,0.5)", fontSize:12 }}>{bubbles.length}/{MAX_BUBBLES}</span>
-          <span style={{ color:"white", fontSize:14 }}>Bubble 🔴</span>
+          <span style={{ color:"white", fontSize:14 }}>{t('title')} 🔴</span>
         </span>
       </header>
 
@@ -1237,18 +1437,6 @@ export default function BubblePage() {
           overflow:  "hidden",
         }}
       >
-        {/* 破裂ライン境界線 */}
-        <div style={{
-          position:      "absolute",
-          top:           BURST_LINE_Y - HEADER_H,
-          left:          0,
-          right:         0,
-          height:        1,
-          background:    "rgba(255,26,26,0.4)",
-          pointerEvents: "none",
-          zIndex:        5,
-        }} />
-
         {bubbles.map(b => (
           <BubbleItem
             key={b.id}
@@ -1362,14 +1550,22 @@ export default function BubblePage() {
         alignItems:           "center",
       }}>
         <div style={{ display:"flex", alignItems:"center", gap:10, width:"100%" }}>
-          <div style={{ flex:1, display:"flex", alignItems:"center", gap:8, background:"rgba(255,255,255,0.07)", border:"0.5px solid rgba(255,255,255,0.12)", borderRadius:22, padding:"8px 12px 8px 14px" }}>
-            <span style={{ fontSize:15, lineHeight:1, flexShrink:0 }}>🌟</span>
+          <div style={{
+            flex:1, display:"flex", alignItems:"center", gap:8,
+            borderRadius:22, padding:"8px 12px 8px 14px",
+            background: input.trim() ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.07)",
+            border: `1px solid ${bubbleBorderColor === 'transparent' ? 'rgba(255,255,255,0.15)' : bubbleBorderColor}`,
+            boxShadow: input.trim()
+              ? `0 0 12px ${bubbleBorderColor === 'transparent' ? 'rgba(255,255,255,0.2)' : bubbleBorderColor}40`
+              : "none",
+            transition: "box-shadow 0.25s ease, background 0.25s ease",
+          }}>
             <input
               type="text"
               value={input}
               onChange={e => setInput(e.target.value.slice(0, MAX_CHARS))}
               onKeyDown={e => e.key === "Enter" && handleSend()}
-              placeholder="今どうしてる？..."
+              placeholder={t('inputPlaceholder')}
               style={{ flex:1, background:"transparent", border:"none", outline:"none", fontSize:14, color:"#fff" }}
             />
             <span style={{
@@ -1390,17 +1586,19 @@ export default function BubblePage() {
             onClick={handleSend}
             disabled={!input.trim()}
             style={{
-              width:40, height:40, borderRadius:"50%", border:"none",
-              cursor:     input.trim() ? "pointer" : "default",
-              background: input.trim() ? "linear-gradient(135deg,#FF1A1A,#8B0000)" : "rgba(255,26,26,0.14)",
+              width:40, height:40, borderRadius:"50%",
+              border: '1.5px solid rgba(255,255,255,0.6)',
+              cursor:         input.trim() ? "pointer" : "default",
+              background:     'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.8), rgba(255,255,255,0.1)), linear-gradient(135deg, #FF6B6B, #FF8E53, #FFD93D, #6BCB77, #4D96FF, #9B59B6)',
+              backdropFilter: 'blur(8px)',
               display:"flex", alignItems:"center", justifyContent:"center",
               transition:"all 0.2s", flexShrink:0,
-              boxShadow: input.trim() ? "0 0 12px rgba(255,26,26,0.40)" : "none",
+              boxShadow: '0 4px 15px rgba(150,100,255,0.4), inset 0 1px 0 rgba(255,255,255,0.6)',
+              opacity: input.trim() ? 1 : 0.35,
+              fontSize: 18,
             }}
           >
-            <svg viewBox="0 0 20 20" fill="none" width={14} height={14}>
-              <path d="M2.5 10l15-7.5L10 10m7.5-7.5L10 10v7.5l2.5-3.5" stroke={input.trim()?"#ffffff":"rgba(255,26,26,0.38)"} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
+            🫧
           </button>
         </div>
       </div>
