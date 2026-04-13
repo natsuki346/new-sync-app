@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import SyncLogo from '@/components/SyncLogo';
 import { supabase } from '@/lib/supabase';
@@ -22,6 +23,7 @@ const COUNTRIES = [
 
 export default function AuthPage() {
   const t = useTranslations('auth');
+  const router = useRouter();
 
   const [country,    setCountry]   = useState(COUNTRIES[0]);
   const [phone,      setPhone]     = useState('');
@@ -186,6 +188,24 @@ export default function AuthPage() {
           {loading ? t('sending') : t('sendCode')}
         </button>
       </form>
+
+      <button
+        type="button"
+        onClick={() => router.push('/bubble')}
+        style={{
+          marginTop: 28,
+          background: 'none',
+          border: 'none',
+          color: 'rgba(255,255,255,0.4)',
+          fontSize: 13,
+          cursor: 'pointer',
+          padding: '4px 8px',
+          textDecoration: 'underline',
+          textUnderlineOffset: 3,
+        }}
+      >
+        デモとして見る →
+      </button>
     </div>
   );
 }
