@@ -191,7 +191,7 @@ export default function AuthPage() {
 
       <div style={{ textAlign: 'center', marginTop: '16px' }}>
         <button
-          onClick={() => { window.location.href = '/bubble'; }}
+          onClick={() => { window.location.href = '/demo'; }}
           style={{
             background: 'none',
             border: 'none',

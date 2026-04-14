@@ -72,7 +72,8 @@
       "Bash(SUPABASE_ACCESS_TOKEN=sbp_bb78601801a64354858cb21df3362bf7fe51bdfb npx supabase db diff)",
       "Bash(SUPABASE_ACCESS_TOKEN=sbp_bb78601801a64354858cb21df3362bf7fe51bdfb npx supabase db push --dry-run)",
       "Bash(SUPABASE_ACCESS_TOKEN=sbp_bb78601801a64354858cb21df3362bf7fe51bdfb npx supabase db push)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(vercel project:*)"
     ]
   }
 }
