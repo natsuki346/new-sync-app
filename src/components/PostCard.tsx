@@ -216,7 +216,7 @@ export default function PostCard({ post, onReply, onUserClick, onHashtagClick, o
         {/* 本文（#タグ部分を除いて表示） */}
         <p
           className="text-sm leading-relaxed whitespace-pre-line mb-2 pl-12"
-          style={{ color: 'rgba(255,255,255,0.85)' }}
+          style={{ color: 'var(--foreground-sub, var(--foreground))' }}
         >
           {isTranslated ? translatedText : stripHashtags(post.content)}
         </p>
@@ -231,9 +231,9 @@ export default function PostCard({ post, onReply, onUserClick, onHashtagClick, o
               alignItems:   'center',
               gap:          4,
               background:   'none',
-              border:       '1px solid rgba(255,255,255,0.18)',
+              border:       '1px solid rgb(var(--border-rgb))',
               borderRadius: 20,
-              color:        isTranslated ? 'rgba(100,160,255,0.9)' : 'rgba(255,255,255,0.45)',
+              color:        isTranslated ? 'rgba(100,160,255,0.9)' : 'var(--muted)',
               fontSize:     11,
               padding:      '2px 10px',
               cursor:       isTranslating ? 'default' : 'pointer',
@@ -246,8 +246,8 @@ export default function PostCard({ post, onReply, onUserClick, onHashtagClick, o
                   display:     'inline-block',
                   width:       10,
                   height:      10,
-                  border:      '1.5px solid rgba(255,255,255,0.3)',
-                  borderTop:   '1.5px solid #fff',
+                  border:      '1.5px solid rgb(var(--border-rgb))',
+                  borderTop:   '1.5px solid var(--foreground)',
                   borderRadius:'50%',
                   animation:   'spin 0.7s linear infinite',
                 }} />
@@ -266,7 +266,7 @@ export default function PostCard({ post, onReply, onUserClick, onHashtagClick, o
                 style={(hashtagColor || hashtagBorderColor) ? {
                   background: 'transparent',
                   border: `1.5px solid ${hashtagColor || hashtagBorderColor}`,
-                  color: '#ffffff',
+                  color: 'var(--foreground)',
                   padding: '2px 10px',
                   borderRadius: 9999,
                   fontSize: 12,
@@ -276,7 +276,7 @@ export default function PostCard({ post, onReply, onUserClick, onHashtagClick, o
                 } : {
                   background: 'linear-gradient(var(--surface), var(--surface)) padding-box, linear-gradient(90deg,#FF6B6B,#FFD93D,#6BCB77,#4D96FF,#9B59B6) border-box',
                   border: '1.5px solid transparent',
-                  color: '#ffffff',
+                  color: 'var(--foreground)',
                   padding: '2px 10px',
                   borderRadius: 9999,
                   fontSize: 12,
@@ -363,8 +363,8 @@ export default function PostCard({ post, onReply, onUserClick, onHashtagClick, o
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 9999,
-            background: 'rgba(30,30,30,0.97)',
-            color: '#fff',
+            background: 'var(--surface)',
+            color: 'var(--foreground)',
             fontSize: 13,
             fontWeight: 500,
             padding: '10px 20px',
@@ -372,7 +372,7 @@ export default function PostCard({ post, onReply, onUserClick, onHashtagClick, o
             whiteSpace: 'pre-wrap',
             textAlign: 'center',
             maxWidth: 300,
-            border: '1px solid rgba(255,255,255,0.12)',
+            border: '1px solid rgb(var(--border-rgb))',
             boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
             pointerEvents: 'none',
           }}
@@ -385,7 +385,7 @@ export default function PostCard({ post, onReply, onUserClick, onHashtagClick, o
       <BottomSheet open={showShare} onClose={() => setShowShare(false)}>
         <div style={{ padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 0 }}>
           {/* タイトル */}
-          <div style={{ color: '#fff', fontWeight: 700, fontSize: 16, marginBottom: 20, textAlign: 'center' }}>
+          <div style={{ color: 'var(--foreground)', fontWeight: 700, fontSize: 16, marginBottom: 20, textAlign: 'center' }}>
             シェア
           </div>
 
@@ -401,8 +401,8 @@ export default function PostCard({ post, onReply, onUserClick, onHashtagClick, o
                 width: '100%',
                 background: 'none',
                 border: 'none',
-                borderBottom: '1px solid #222',
-                color: '#fff',
+                borderBottom: '1px solid rgb(var(--border-rgb))',
+                color: 'var(--foreground)',
                 fontSize: 15,
                 padding: '16px 4px',
                 cursor: 'pointer',
@@ -420,10 +420,10 @@ export default function PostCard({ post, onReply, onUserClick, onHashtagClick, o
             style={{
               marginTop: 12,
               width: '100%',
-              background: '#1a1a1a',
+              background: 'var(--surface)',
               border: 'none',
               borderRadius: 12,
-              color: '#aaa',
+              color: 'var(--muted)',
               fontSize: 15,
               padding: '14px',
               cursor: 'pointer',

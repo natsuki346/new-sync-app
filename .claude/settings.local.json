@@ -73,7 +73,11 @@
       "Bash(SUPABASE_ACCESS_TOKEN=sbp_bb78601801a64354858cb21df3362bf7fe51bdfb npx supabase db push --dry-run)",
       "Bash(SUPABASE_ACCESS_TOKEN=sbp_bb78601801a64354858cb21df3362bf7fe51bdfb npx supabase db push)",
       "Bash(wc:*)",
-      "Bash(vercel project:*)"
+      "Bash(vercel project:*)",
+      "Bash(C:/Users/81908/sync-v5/node_modules/.bin/tsc --noEmit)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(node_modules/.bin/tsc --noEmit --skipLibCheck)",
+      "Bash(node_modules/.bin/next build:*)"
     ]
   }
 }

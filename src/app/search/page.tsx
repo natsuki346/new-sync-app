@@ -326,7 +326,13 @@ export default function SearchPage() {
       <div className="flex flex-col flex-1 min-h-0">
         <TagResultView
           tag={selectedTag}
-          onBack={() => { setSelectedTag(null); }}
+          onBack={() => {
+            if (isFromUrl) {
+              router.back();
+            } else {
+              setSelectedTag(null);
+            }
+          }}
         />
       </div>
     );

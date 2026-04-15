@@ -62,7 +62,9 @@ export default function BottomNav() {
       style={{ background: 'linear-gradient(to top, var(--background) 80%, transparent)' }}
     >
       {/* Home */}
-      <Link href="/home" className="flex flex-col items-center gap-1">
+      <Link href="/home" className="flex flex-col items-center gap-1"
+        style={{ cursor: 'pointer', WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
+      >
         <svg width="24" height="24" viewBox="0 0 24 24"
           fill="none" strokeLinecap="round" strokeLinejoin="round"
         >
@@ -94,7 +96,9 @@ export default function BottomNav() {
       </Link>
 
       {/* Bubble (center rainbow circle) */}
-      <Link href="/bubble" className="flex flex-col items-center gap-1">
+      <Link href="/bubble" className="flex flex-col items-center gap-1"
+        style={{ cursor: 'pointer', WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
+      >
         <div
           className="w-14 h-14 rounded-full flex items-center justify-center shadow-lg"
           style={{
@@ -119,7 +123,9 @@ export default function BottomNav() {
       </Link>
 
       {/* Search */}
-      <Link href="/search" className="flex flex-col items-center gap-1">
+      <Link href="/search" className="flex flex-col items-center gap-1"
+        style={{ cursor: 'pointer', WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
+      >
         <svg width="24" height="24" viewBox="0 0 24 24"
           fill="none" strokeLinecap="round" strokeLinejoin="round"
         >

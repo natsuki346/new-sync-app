@@ -59,6 +59,9 @@ export default function ChatDetailPage() {
   const params = useParams<{ id: string }>();
   const { user } = useAuth();
 
+  // params.id が conversation_id か user_id かを解決した実際の conversation_id
+  const [convId,    setConvId]    = useState<string | null>(null);
+
   const [convInfo, setConvInfo] = useState<Conversation>({
     id:      params.id,
     avatar:  '👤',
@@ -92,9 +95,89 @@ export default function ChatDetailPage() {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // ── 会話情報取得 ──────────────────────────────────────────────
+  // ── params.id を conversation_id に解決 ──────────────────────
+  // プロフィール画面など user_id を渡してきた場合、DM を検索または作成する
   useEffect(() => {
     if (!user?.id) return;
+    let cancelled = false;
+
+    (async () => {
+      // まず conversation_id として検索
+      const { data: convCheck } = await (supabase as any)
+        .from('conversations')
+        .select('id')
+        .eq('id', params.id)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (convCheck) {
+        // 有効な conversation_id だったのでそのまま使用
+        setConvId(params.id);
+        return;
+      }
+
+      // conversation_id として見つからなかった → user_id として扱い DM を検索 / 作成
+      const targetUserId = params.id;
+
+      const { data: myConvIds } = await (supabase as any)
+        .from('conversation_members')
+        .select('conversation_id')
+        .eq('user_id', user.id);
+
+      const myIds: string[] = (myConvIds ?? []).map((r: any) => r.conversation_id);
+
+      if (myIds.length > 0) {
+        const { data: shared } = await (supabase as any)
+          .from('conversation_members')
+          .select('conversation_id')
+          .eq('user_id', targetUserId)
+          .in('conversation_id', myIds);
+
+        const sharedIds: string[] = (shared ?? []).map((r: any) => r.conversation_id);
+
+        if (sharedIds.length > 0) {
+          const { data: existing } = await (supabase as any)
+            .from('conversations')
+            .select('id')
+            .eq('type', 'dm')
+            .in('id', sharedIds)
+            .maybeSingle();
+
+          if (!cancelled && existing) {
+            setConvId(existing.id);
+            return;
+          }
+        }
+      }
+
+      if (cancelled) return;
+
+      // 新規 DM 作成
+      const { data: newConv, error } = await (supabase as any)
+        .from('conversations')
+        .insert({ type: 'dm', created_by: user.id })
+        .select('id')
+        .single();
+
+      if (cancelled || error || !newConv) return;
+
+      await (supabase as any)
+        .from('conversation_members')
+        .insert([
+          { conversation_id: newConv.id, user_id: user.id },
+          { conversation_id: newConv.id, user_id: targetUserId },
+        ]);
+
+      if (!cancelled) setConvId(newConv.id);
+    })();
+
+    return () => { cancelled = true; };
+  }, [params.id, user?.id]);
+
+  // ── 会話情報取得 ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!user?.id || !convId) return;
     let cancelled = false;
 
     (async () => {
@@ -107,7 +190,7 @@ export default function ChatDetailPage() {
             profiles (id, username, display_name, avatar_url)
           )
         `)
-        .eq('id', params.id)
+        .eq('id', convId)
         .single();
 
       if (cancelled || error || !data) return;
@@ -146,11 +229,11 @@ export default function ChatDetailPage() {
     })();
 
     return () => { cancelled = true; };
-  }, [params.id, user?.id]);
+  }, [convId, user?.id]);
 
   // ── メッセージ初期取得 ────────────────────────────────────────
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !convId) return;
     let cancelled = false;
     setMsgsLoading(true);
 
@@ -158,7 +241,7 @@ export default function ChatDetailPage() {
       const { data, error } = await (supabase as any)
         .from('messages')
         .select('id, content, message_type, image_url, created_at, user_id')
-        .eq('conversation_id', params.id)
+        .eq('conversation_id', convId)
         .order('created_at', { ascending: true })
         .limit(50);
 
@@ -182,21 +265,21 @@ export default function ChatDetailPage() {
     })();
 
     return () => { cancelled = true; };
-  }, [params.id, user?.id]);
+  }, [convId, user?.id]);
 
   // ── Realtime メッセージ受信 ───────────────────────────────────
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !convId) return;
 
     const channel = (supabase as any)
-      .channel(`chat-${params.id}`)
+      .channel(`chat-${convId}`)
       .on(
         'postgres_changes',
         {
           event:  'INSERT',
           schema: 'public',
           table:  'messages',
-          filter: `conversation_id=eq.${params.id}`,
+          filter: `conversation_id=eq.${convId}`,
         },
         (payload: any) => {
           const row = payload.new;
@@ -218,12 +301,12 @@ export default function ChatDetailPage() {
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [params.id, user?.id]);
+  }, [convId, user?.id]);
 
   // ── テキスト送信 ──────────────────────────────────────────────
   const sendMessage = useCallback(() => {
     const txt = input.trim();
-    if (!txt) return;
+    if (!txt || !convId) return;
     const t = nowTime();
     setMessages((prev) => [
       ...prev.map((m) => ({ ...m, isRead: true })),
@@ -232,7 +315,7 @@ export default function ChatDetailPage() {
     setInput('');
     if (user) {
       (supabase.from('messages') as any).insert({
-        conversation_id: params.id,
+        conversation_id: convId,
         user_id:         user.id,
         content:         txt,
         message_type:    'text',
@@ -250,7 +333,7 @@ export default function ChatDetailPage() {
         ]);
       }, delay);
     }
-  }, [input, params.id, user]);
+  }, [input, convId, user]);
 
   // ── 画像送信 ──────────────────────────────────────────────────
   const sendImage = useCallback((dataUrl: string) => {
@@ -288,7 +371,7 @@ export default function ChatDetailPage() {
 
     // DB に保存
     const { error: insertError } = await (supabase.from('messages') as any).insert({
-      conversation_id: params.id,
+      conversation_id: convId,
       user_id:         user.id,
       content:         publicUrl,
       message_type:    'image',

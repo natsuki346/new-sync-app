@@ -71,7 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .maybeSingle()
       .then(({ data }) => {
         setProfile(data);
-        setHasProfile(data !== null);
+        setHasProfile(data !== null && !!data?.username);
         setProfileLoading(false);
       });
 
@@ -122,10 +122,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!error && data.user) {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('id')
+        .select('id, username')
         .eq('id', data.user.id)
         .maybeSingle();
-      setHasProfile(profile !== null);
+      setHasProfile(profile !== null && !!(profile as any)?.username);
     }
 
     return { error };

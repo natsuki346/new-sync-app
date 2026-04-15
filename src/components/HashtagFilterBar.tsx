@@ -25,28 +25,48 @@ export default function HashtagFilterBar({
 
   return (
     <div
-      className="flex items-center gap-2 px-4 py-2.5 overflow-x-auto"
+      className="flex overflow-x-auto"
       style={{
         borderBottom: '1px solid var(--surface-2)',
-        scrollbarWidth: 'none',
-        msOverflowStyle: 'none',
+        alignItems: 'center',
+        gap: 8,
+        padding: '10px 16px',
+        flexWrap: 'nowrap',
       }}
     >
       {/* All チップ */}
       <button
         onClick={() => onChange([])}
-        className="flex-shrink-0 text-xs font-semibold px-3 py-1 rounded-full transition-all duration-150"
+        className="flex-shrink-0 text-xs font-semibold px-3 rounded-full transition-all duration-150"
         style={
           isAll
             ? {
                 background: RAINBOW,
                 color: '#ffffff',
                 border: 'none',
+                height: 28,
+                display: 'inline-flex',
+                alignItems: 'center',
+                lineHeight: 1,
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+                cursor: 'pointer',
+                WebkitTapHighlightColor: 'transparent',
+                touchAction: 'manipulation',
               }
             : {
                 background: 'transparent',
                 color: 'var(--muted)',
                 border: '1px solid var(--surface-2)',
+                height: 28,
+                display: 'inline-flex',
+                alignItems: 'center',
+                lineHeight: 1,
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+                cursor: 'pointer',
+                WebkitTapHighlightColor: 'transparent',
+                touchAction: 'manipulation',
               }
         }
       >
@@ -60,7 +80,7 @@ export default function HashtagFilterBar({
           <button
             key={tag}
             onClick={() => toggle(tag)}
-            className="flex-shrink-0 text-xs font-semibold px-3 py-1 rounded-full transition-all duration-150"
+            className="flex-shrink-0 text-xs font-semibold px-3 rounded-full transition-all duration-150"
             style={
               active
                 ? {
@@ -69,11 +89,29 @@ export default function HashtagFilterBar({
                     WebkitTextFillColor: 'transparent',
                     backgroundClip: 'text',
                     border: '1px solid #7C6FE8',
+                    height: 28,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    lineHeight: 1,
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                    cursor: 'pointer',
+                    WebkitTapHighlightColor: 'transparent',
+                    touchAction: 'manipulation',
                   }
                 : {
                     background: 'transparent',
                     color: 'var(--muted)',
                     border: '1px solid var(--surface-2)',
+                    height: 28,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    lineHeight: 1,
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                    cursor: 'pointer',
+                    WebkitTapHighlightColor: 'transparent',
+                    touchAction: 'manipulation',
                   }
             }
           >

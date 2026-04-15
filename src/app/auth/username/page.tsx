@@ -13,7 +13,14 @@ const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
 export default function UsernamePage() {
   const t = useTranslations('username');
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, profile, loading: authLoading } = useAuth();
+
+  // ガード: 未ログイン → /auth、設定済み → /home
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) { router.replace('/auth'); return; }
+    if (profile?.username) { router.replace('/home'); }
+  }, [authLoading, user, profile, router]);
 
   const [username,  setUsername]  = useState('');
   const [error,     setError]     = useState('');
@@ -85,7 +92,7 @@ export default function UsernamePage() {
     } else {
       sessionStorage.removeItem('sync_phone');
       await new Promise(resolve => setTimeout(resolve, 500));
-      router.push('/home');
+      router.push('/onboarding');
     }
   }
 

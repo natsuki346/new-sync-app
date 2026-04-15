@@ -656,7 +656,7 @@ export default function ChatPage() {
                 {selectedIds.length > 0 && (
                   <div
                     className="flex gap-2 px-5 py-2 overflow-x-auto"
-                    style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', scrollbarWidth: 'none' }}
+                    style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
                   >
                     {selectedIds.map((id) => {
                       const f = friends.find((x) => x.id === id);

@@ -159,14 +159,14 @@ function SideDrawer({
           <p style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: 16, lineHeight: 1.3, margin: 0 }}>
             {profile?.display_name ?? 'ゲスト'}
           </p>
-          <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', marginTop: 3 }}>
+          <p style={{ fontSize: 13, color: 'var(--muted)', marginTop: 3 }}>
             {'@' + (profile?.username ?? 'user')}
           </p>
           {/* フォロー数表示なし */}
         </div>
 
         {/* 区切り */}
-        <div style={{ height: 1, margin: '0 20px 4px', background: 'rgba(255,255,255,0.1)' }} />
+        <div style={{ height: 1, margin: '0 20px 4px', background: 'var(--surface-2)' }} />
 
         {/* メニュー */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -183,7 +183,7 @@ function SideDrawer({
               <span style={{ fontSize: 20, width: 28, textAlign: 'center', flexShrink: 0 }}>{icon}</span>
               <span style={{ flex: 1, fontWeight: 600, color: 'var(--text-primary)', fontSize: 15 }}>{t(tKey as Parameters<typeof t>[0])}</span>
               <svg viewBox="0 0 24 24" fill="none" strokeWidth={2}
-                style={{ width: 16, height: 16, stroke: 'rgba(255,255,255,0.25)', flexShrink: 0 }}
+                style={{ width: 16, height: 16, stroke: 'var(--muted)', flexShrink: 0 }}
               >
                 <path strokeLinecap="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
               </svg>
@@ -192,7 +192,7 @@ function SideDrawer({
         </div>
 
         {/* 区切り */}
-        <div style={{ height: 1, margin: '0 20px', background: 'rgba(255,255,255,0.1)' }} />
+        <div style={{ height: 1, margin: '0 20px', background: 'var(--surface-2)' }} />
 
         {/* ログアウト */}
         <button
@@ -309,10 +309,11 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
   const [oppsMessage,  setOppsMessage]  = useState('');
   const [followedTags, setFollowedTags] = useState<string[]>([]);
   const [suggestions,  setSuggestions]  = useState<string[]>([]);
-  const imageRef  = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
-  const textaRef  = useRef<HTMLTextAreaElement>(null);
-  const modalRef  = useRef<HTMLDivElement>(null);
+  const imageRef     = useRef<HTMLInputElement>(null);
+  const cameraRef    = useRef<HTMLInputElement>(null);
+  const textaRef     = useRef<HTMLTextAreaElement>(null);
+  const modalRef     = useRef<HTMLDivElement>(null);
+  const isPostingRef = useRef(false);
 
   const MAX_CHARS  = 280;
   const used       = text.length;
@@ -397,7 +398,9 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
   }
   function handleClose() { removeMedia(); setText(''); onClose(); }
   async function doPost() {
-    if (!user) return;
+    if (isPostingRef.current) return;
+    isPostingRef.current = true;
+    if (!user) { isPostingRef.current = false; return; }
     const hashtags  = extractHashtags(text);
     const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
 
@@ -450,9 +453,11 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
       }
       if (modalRef.current) spawnSoapBubbles(modalRef.current);
       setPosted(true);
+      isPostingRef.current = false;
       setTimeout(() => { setPosted(false); removeMedia(); setText(''); onClose(); }, 1000);
     } else {
       console.error('投稿エラー:', error);
+      isPostingRef.current = false;
     }
   }
 
@@ -526,7 +531,7 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
       ref={modalRef}
       className="absolute inset-0 z-50 flex flex-col overflow-hidden"
       style={{
-        background: '#111111',
+        background: 'var(--background)',
         transform: open ? 'translateY(0)' : 'translateY(100%)',
         transition: open ? 'transform 0.25s ease-out' : 'transform 0.26s ease-in',
         pointerEvents: open ? 'auto' : 'none',
@@ -535,9 +540,9 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
       {/* ── ヘッダー ── */}
       <div style={{
         flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '16px 16px 12px', background: '#111111',
+        padding: '16px 16px 12px', background: 'var(--background)',
       }}>
-        <button style={{ color: '#ffffff', fontSize: 15, fontWeight: 500, padding: '0 4px' }} onClick={handleClose}>
+        <button style={{ color: 'var(--foreground)', fontSize: 15, fontWeight: 500, padding: '0 4px' }} onClick={handleClose}>
           {t('cancel')}
         </button>
         <div />
@@ -577,7 +582,7 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-word',
                 overflowWrap: 'break-word',
-                color: '#ffffff',
+                color: 'var(--foreground)',
                 fontSize: 19, lineHeight: 1.6,
                 fontFamily: 'inherit',
                 padding: 0,
@@ -604,42 +609,6 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
               onChange={handleTextChange}
             />
           </div>
-          {suggestions.length > 0 && (
-            <div style={{
-              background: '#111',
-              border: '1px solid #333',
-              borderRadius: 12,
-              overflow: 'hidden',
-              marginTop: 4
-            }}>
-              {suggestions.map(tag => (
-                <button
-                  key={tag}
-                  onPointerDown={(e) => {
-                    e.preventDefault()
-                    applySuggestion(tag)
-                  }}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    width: '100%',
-                    padding: '10px 16px',
-                    background: 'none',
-                    border: 'none',
-                    borderBottom: '1px solid #222',
-                    cursor: 'pointer',
-                    textAlign: 'left'
-                  }}
-                >
-                  <span style={{ color: '#E63946', fontWeight: 700, fontSize: 13 }}>#</span>
-                  <span style={{ color: '#fff', fontSize: 13 }}>
-                    {tag.replace(/^#/, '')}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
           <style>{`textarea::-webkit-input-placeholder{color:#666;}textarea::placeholder{color:#666;}`}</style>
           {media && (
             <div style={{ position: 'relative', marginTop: 12, borderRadius: 16, overflow: 'hidden', border: '1px solid #333' }}>
@@ -667,19 +636,67 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
         </div>
       </div>
 
+      {/* ── ハッシュタグ候補リスト ── */}
+      {suggestions.length > 0 && (
+        <div style={{
+          flexShrink: 0,
+          maxHeight: 220,
+          overflowY: 'auto',
+          background: 'var(--surface)',
+          borderTop: '1px solid rgb(var(--border-rgb))',
+        }}>
+          {suggestions.map(tag => (
+            <button
+              key={tag}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                applySuggestion(tag);
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                width: '100%',
+                padding: '13px 20px',
+                background: 'none',
+                border: 'none',
+                borderBottom: '1px solid rgb(var(--border-rgb))',
+                cursor: 'pointer',
+                textAlign: 'left',
+                WebkitTapHighlightColor: 'transparent',
+                touchAction: 'manipulation',
+              }}
+            >
+              <span style={{
+                width: 28, height: 28, borderRadius: '50%',
+                background: 'rgba(230,57,70,0.12)',
+                border: '1.5px solid rgba(230,57,70,0.3)',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                color: '#E63946', fontWeight: 700, fontSize: 13, flexShrink: 0,
+              }}>
+                #
+              </span>
+              <span style={{ color: 'var(--foreground)', fontSize: 14, fontWeight: 500 }}>
+                {tag.replace(/^#/, '')}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* ── 下部ツールバー ── */}
       <div style={{
         flexShrink: 0, display: 'flex', alignItems: 'center',
         padding: '8px 8px', paddingBottom: 'max(env(safe-area-inset-bottom, 8px), 8px)',
-        borderTop: '1px solid #333', background: '#111111',
+        borderTop: '1px solid rgb(var(--border-rgb))', background: 'var(--background)',
       }}>
         <button
           style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: 'none', background: 'transparent', cursor: 'pointer' }}
           onClick={() => imageRef.current?.click()}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth={1.8} style={{ width: 20, height: 20 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--foreground)" strokeWidth={1.8} style={{ width: 20, height: 20 }}>
             <rect x="3" y="3" width="18" height="18" rx="3" />
-            <circle cx="8.5" cy="8.5" r="1.5" fill="#ffffff" />
+            <circle cx="8.5" cy="8.5" r="1.5" fill="var(--foreground)" />
             <path strokeLinecap="round" d="M21 15l-5-5L5 21" />
           </svg>
         </button>
@@ -690,7 +707,7 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
           style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: 'none', background: 'transparent', cursor: 'pointer' }}
           onClick={() => cameraRef.current?.click()}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth={1.8} style={{ width: 20, height: 20 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--foreground)" strokeWidth={1.8} style={{ width: 20, height: 20 }}>
             <path strokeLinecap="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
             <path strokeLinecap="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
           </svg>
@@ -698,11 +715,11 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
         <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }}
           onChange={(e) => handleFile(e.target.files?.[0])} />
 
-        <button style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 20, fontWeight: 900, color: '#ffffff' }}>
+        <button style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 20, fontWeight: 900, color: 'var(--foreground)' }}>
           #
         </button>
         <button style={{ width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%', border: 'none', background: 'transparent', cursor: 'pointer' }}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth={1.8} style={{ width: 20, height: 20 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="var(--foreground)" strokeWidth={1.8} style={{ width: 20, height: 20 }}>
             <path strokeLinecap="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
             <path strokeLinecap="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
           </svg>
@@ -886,7 +903,7 @@ function ReplyModal({
                     {displayPost.handle}
                   </span>
                 </div>
-                <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: 'rgba(255,255,255,0.8)' }}>
+                <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: 'var(--foreground-sub, var(--foreground))' }}>
                   {displayPost.content}
                 </p>
                 <div className="flex flex-wrap gap-1 mt-1.5">
@@ -894,7 +911,7 @@ function ReplyModal({
                     <span key={tag} style={hashtagColor ? {
                       background: 'transparent',
                       border: `1.5px solid ${hashtagColor}`,
-                      color: '#ffffff',
+                      color: 'var(--foreground)',
                       padding: '2px 10px',
                       borderRadius: 9999,
                       fontSize: 12,
@@ -903,7 +920,7 @@ function ReplyModal({
                     } : {
                       background: 'linear-gradient(var(--surface), var(--surface)) padding-box, linear-gradient(90deg,#FF6B6B,#FFD93D,#6BCB77,#4D96FF,#9B59B6) border-box',
                       border: '1.5px solid transparent',
-                      color: '#ffffff',
+                      color: 'var(--foreground)',
                       padding: '2px 10px',
                       borderRadius: 9999,
                       fontSize: 12,
@@ -941,7 +958,7 @@ function ReplyModal({
                           @{r.profile?.username ?? ''}
                         </span>
                       </div>
-                      <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: 'rgba(255,255,255,0.75)' }}>
+                      <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: 'var(--foreground-sub, var(--foreground))' }}>
                         {r.content}
                       </p>
                     </div>
@@ -1022,7 +1039,7 @@ export default function HomePage() {
 
   useEffect(() => {
     if (loading) return;
-    if (user && !profileLoading && !hasProfile) { router.push('/auth/username'); }
+    if (user && !profileLoading && (!hasProfile || !profile?.username)) { router.push('/auth/username'); }
   }, [loading, user, hasProfile, profileLoading, router]);
 
   // 未読通知バッジ数
@@ -1473,6 +1490,9 @@ export default function HomePage() {
           width: 56, height: 56,
           background: RAINBOW,
           boxShadow: '0 4px 20px rgba(124,111,232,0.5)',
+          cursor: 'pointer',
+          WebkitTapHighlightColor: 'transparent',
+          touchAction: 'manipulation',
         }}
         onClick={() => user ? setModalOpen(true) : showToast('ログインが必要です')}
       >
@@ -1499,7 +1519,7 @@ export default function HomePage() {
       </button>
 
       {/* ── コンテンツ ─────────────────────────────────────────────── */}
-      <main className="flex-1 overflow-y-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+      <main className="flex-1 overflow-y-auto">
         {activeTab === 'Timeline' && (
           <>
             <HashtagFilterBar
