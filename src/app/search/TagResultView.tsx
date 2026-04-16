@@ -67,6 +67,7 @@ export default function TagResultView({ tag, onBack }: Props) {
   const [replyOpen,        setReplyOpen]        = useState(false)
   const [cardColor,        setCardColor]        = useState('')
   const [hashtagColor,     setHashtagColor]     = useState('')
+  const [textColor,        setTextColor]        = useState('')
 
   const POST_GOAL     = 3
   const REACTION_GOAL = 10
@@ -79,6 +80,7 @@ export default function TagResultView({ tag, onBack }: Props) {
   useEffect(() => {
     setCardColor(localStorage.getItem('sync_card_bg') || '')
     setHashtagColor(localStorage.getItem('sync_hashtag_color') || '')
+    setTextColor(localStorage.getItem('sync_text_color') || '')
   }, [])
 
   async function load() {
@@ -420,10 +422,10 @@ export default function TagResultView({ tag, onBack }: Props) {
         }}>
           {/* 左：タグ名・フォロワー数 */}
           <div style={{ flex: 1 }}>
-            <p style={{ color: 'var(--foreground)', fontSize: 20, fontWeight: 800, margin: '0 0 4px 0' }}>
+            <p style={{ color: textColor || 'var(--foreground)', fontSize: 20, fontWeight: 800, margin: '0 0 4px 0' }}>
               #{displayTag}
             </p>
-            <p style={{ color: 'var(--muted)', fontSize: 13, margin: 0 }}>
+            <p style={{ color: textColor ? textColor + 'aa' : 'var(--muted)', fontSize: 13, margin: 0 }}>
               {followerCount} people following
             </p>
           </div>
@@ -479,10 +481,10 @@ export default function TagResultView({ tag, onBack }: Props) {
       {/* ── タグ情報（未フォロー） */}
       {!isFollowing && (
         <div style={{ padding: '12px 16px', borderBottom: '1px solid rgb(var(--border-rgb))' }}>
-          <p style={{ color: 'var(--foreground)', fontSize: 20, fontWeight: 800, margin: '0 0 4px 0' }}>
+          <p style={{ color: textColor || 'var(--foreground)', fontSize: 20, fontWeight: 800, margin: '0 0 4px 0' }}>
             #{displayTag}
           </p>
-          <p style={{ color: 'var(--muted)', fontSize: 13, margin: 0 }}>
+          <p style={{ color: textColor ? textColor + 'aa' : 'var(--muted)', fontSize: 13, margin: 0 }}>
             {followerCount} people following
           </p>
         </div>

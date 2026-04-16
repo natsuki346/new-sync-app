@@ -96,6 +96,14 @@ export default function PostCard({ post, onReply, onUserClick, onHashtagClick, o
     ? localStorage.getItem('sync_hashtag_color') || ''
     : '';
 
+  const textColor = typeof window !== 'undefined'
+    ? localStorage.getItem('sync_text_color') || ''
+    : '';
+
+  const postTextColor = typeof window !== 'undefined'
+    ? localStorage.getItem('sync_post_text_color') || ''
+    : '';
+
   // ── 翻訳機能 ──────────────────────────────────────────────────
   const [isTranslated, setIsTranslated]     = useState(false);
   const [translatedText, setTranslatedText] = useState('');
@@ -197,10 +205,10 @@ export default function PostCard({ post, onReply, onUserClick, onHashtagClick, o
                 className="flex flex-col min-w-0 cursor-pointer active:opacity-70"
                 onClick={onUserClick}
               >
-                <span style={{ color: 'var(--foreground)', fontWeight: 600, fontSize: 14 }}>
+                <span style={{ color: textColor || 'var(--foreground)', fontWeight: 600, fontSize: 14 }}>
                   {post.name}
                 </span>
-                <span style={{ color: 'var(--muted)', fontSize: 11, opacity: 0.6 }}>
+                <span style={{ color: textColor ? textColor + 'aa' : 'var(--muted)', fontSize: 11, opacity: 0.6 }}>
                   {post.handle}
                 </span>
               </div>
@@ -216,7 +224,7 @@ export default function PostCard({ post, onReply, onUserClick, onHashtagClick, o
         {/* 本文（#タグ部分を除いて表示） */}
         <p
           className="text-sm leading-relaxed whitespace-pre-line mb-2 pl-12"
-          style={{ color: 'var(--foreground-sub, var(--foreground))' }}
+          style={{ color: postTextColor || textColor || 'var(--foreground-sub, var(--foreground))' }}
         >
           {isTranslated ? translatedText : stripHashtags(post.content)}
         </p>

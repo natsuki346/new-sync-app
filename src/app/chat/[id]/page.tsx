@@ -76,19 +76,24 @@ export default function ChatDetailPage() {
   const [messages,     setMessages]     = useState<ChatMsg[]>([]);
   const [msgsLoading,  setMsgsLoading]  = useState(true);
   const [settingsOpen,     setSettingsOpen]     = useState(false);
-  const [myBubbleColor,    setMyBubbleColor]    = useState('rainbow');
+  const [myBubbleColor,    setMyBubbleColor]    = useState('');
   const [theirBubbleColor, setTheirBubbleColor] = useState('');
 
   const bottomRef      = useRef<HTMLDivElement>(null);
   const fileInputRef   = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  // チャット吹き出し色を localStorage から読み込む
+  // チャット吹き出し色・文字色を localStorage から読み込む
+  const [myMsgColor,    setMyMsgColor]    = useState('');
+  const [theirMsgColor, setTheirMsgColor] = useState('');
+
   useEffect(() => {
     const my    = localStorage.getItem('sync_my_bubble_color');
     const their = localStorage.getItem('sync_their_bubble_color');
     if (my    !== null) setMyBubbleColor(my);
     if (their !== null) setTheirBubbleColor(their);
+    setMyMsgColor(localStorage.getItem('sync_my_msg_color') || '');
+    setTheirMsgColor(localStorage.getItem('sync_their_msg_color') || '');
   }, []);
 
   useEffect(() => {
@@ -557,17 +562,17 @@ export default function ChatDetailPage() {
                   style={
                     isMe
                       ? {
-                          background: myBubbleColor === 'rainbow'
+                          background: !myBubbleColor || myBubbleColor === 'rainbow'
                             ? 'linear-gradient(135deg, #FF6B6B, #FF8E53, #FFD93D, #6BCB77, #4D96FF, #9B59B6)'
                             : myBubbleColor,
-                          color: '#ffffff',
+                          color: myMsgColor || '#ffffff',
                           borderRadius: '18px 18px 4px 18px',
                           fontWeight: 500,
                           boxShadow: '0 2px 8px rgba(155,89,182,0.3)',
                         }
                       : {
                           background: theirBubbleColor || 'rgba(255,255,255,0.08)',
-                          color: 'var(--foreground)',
+                          color: theirMsgColor || 'var(--foreground)',
                           border: '1px solid rgba(255,255,255,0.12)',
                           borderRadius: '18px 18px 18px 4px',
                           backdropFilter: 'blur(8px)',
@@ -694,7 +699,7 @@ export default function ChatDetailPage() {
               onClick={sendMessage}
               className="w-9 h-9 flex-shrink-0 flex items-center justify-center active:scale-90 transition-all"
               style={{
-                background: myBubbleColor === 'rainbow'
+                background: !myBubbleColor || myBubbleColor === 'rainbow'
                   ? 'linear-gradient(135deg, #FF6B6B, #FF8E53, #FFD93D, #6BCB77, #4D96FF, #9B59B6)'
                   : myBubbleColor,
                 borderRadius: '50%',

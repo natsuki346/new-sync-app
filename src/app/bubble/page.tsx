@@ -134,7 +134,7 @@ const makeId = () => Math.random().toString(36).slice(2, 9);
 
 // ── BubbleItem ──────────────────────────────────────────────────────────
 
-function BubbleItem({ b, onTap, onQuickLike, setRef, timeLeft, isLiked, reactionEmoji, bubbleBorderColor }: {
+function BubbleItem({ b, onTap, onQuickLike, setRef, timeLeft, isLiked, reactionEmoji, bubbleBorderColor, bubbleTextColor }: {
   b:                 Bubble;
   onTap:             (clientX: number, clientY: number) => void;
   onQuickLike:       () => void;
@@ -143,6 +143,7 @@ function BubbleItem({ b, onTap, onQuickLike, setRef, timeLeft, isLiked, reaction
   isLiked:           boolean;
   reactionEmoji:     string;
   bubbleBorderColor: string;
+  bubbleTextColor:   string;
 }) {
   const [isNew, setIsNew]       = useState(true);
   const physicsInitRef           = useRef(false);
@@ -248,7 +249,7 @@ function BubbleItem({ b, onTap, onQuickLike, setRef, timeLeft, isLiked, reaction
             minWidth:     0,
             fontSize:     11,
             fontWeight:   600,
-            color:        b.textColor,
+            color:        bubbleTextColor,
             whiteSpace:   "nowrap",
             overflow:     "hidden",
             textOverflow: "ellipsis",
@@ -583,6 +584,21 @@ export default function BubblePage() {
   const [postCount,       setPostCount]      = useState(0);
   const [viewerCount,     setViewerCount]    = useState(0);
   const [bubbleBorderColor, setBubbleBorderColor] = useState('#FF1A1A');
+  const [bubbleTextColor,   setBubbleTextColor]   = useState('#ffffff');
+  useEffect(() => {
+    const readColor = () => {
+      const stored = localStorage.getItem('sync_bubble_text_color');
+      setBubbleTextColor(stored || '#ffffff');
+    };
+    readColor();
+    // Settingsから戻ってきた時に再読み込み
+    document.addEventListener('visibilitychange', readColor);
+    window.addEventListener('focus', readColor);
+    return () => {
+      document.removeEventListener('visibilitychange', readColor);
+      window.removeEventListener('focus', readColor);
+    };
+  }, []);
 
   const laneLastUsedRef  = useRef<number[]>(new Array(LANE_COUNT).fill(0));
   const bubblesRef       = useRef<Bubble[]>([]);
@@ -1054,7 +1070,7 @@ export default function BubblePage() {
       timeLeft:  BUBBLE_LIFETIME,
       x:         initX,
       y:         initY,
-      textColor:   "#FFFFFF",
+      textColor:   bubbleTextColor,
       paused:      false,
       borderColor: isOwn ? undefined : getRandomBorderColor(),
     };
@@ -1154,7 +1170,7 @@ export default function BubblePage() {
           timeLeft:    BUBBLE_LIFETIME,
           x,
           y:           initY,
-          textColor:   '#FFFFFF',
+          textColor:   bubbleTextColor,
           paused:      false,
           borderColor: RANDOM_BORDER_COLORS[i % RANDOM_BORDER_COLORS.length],
         };
@@ -1421,7 +1437,7 @@ export default function BubblePage() {
   // ── レンダリング ──────────────────────────────────────────────────────
 
   return (
-    <div style={{ position:"relative", display:"flex", flexDirection:"column", height:"100dvh", overflow:"hidden", background:"#0d0d1a" }}>
+    <div style={{ position:"relative", display:"flex", flexDirection:"column", height:"100dvh", overflow:"hidden", background: "#0d0d1a" }}>
 
       {/* ヘッダー */}
       <header ref={headerRef} style={{
@@ -1498,6 +1514,7 @@ export default function BubblePage() {
             onQuickLike={() => handleQuickLike(b)}
             reactionEmoji={reactionEmoji}
             bubbleBorderColor={bubbleBorderColor}
+            bubbleTextColor={bubbleTextColor}
             setRef={el => {
               if (el) {
                 bubbleDivRefs.current.set(b.id, el);
