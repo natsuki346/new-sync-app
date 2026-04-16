@@ -1,10 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { setLanguage } from '@/hooks/useLanguage';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
+import { GENRES, GENRE_HASHTAGS } from '@/lib/genreHashtags';
+
+const RAINBOW = 'linear-gradient(135deg, #7C6FE8, #A855F7, #EC4899, #F97316, #EAB308, #22C55E, #3B82F6)';
 
 // ── 型 ───────────────────────────────────────────────────────────
 
@@ -486,9 +490,10 @@ function HueSlider({
 export default function SettingsPage() {
   const t = useTranslations('settings');
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { signOut, followHashtag, unfollowHashtag, user } = useAuth();
 
   const handleLogout = async () => {
+    localStorage.setItem('sync_logged_out', 'true');
     await signOut();
     router.push('/auth');
   };
@@ -539,6 +544,11 @@ export default function SettingsPage() {
   const [myBubbleColor,     setMyBubbleColorState]    = useState<string>('rainbow');
   const [theirBubbleColor,  setTheirBubbleColorState] = useState<string>('');
 
+  // ジャンル
+  const [expandedGenre, setExpandedGenre] = useState<string | null>(null);
+  const [followedTags,  setFollowedTags]  = useState<Set<string>>(new Set());
+  const [genreSearch,   setGenreSearch]   = useState('');
+
   // 言語
   const [lang,     setLangState] = useState<Lang>('ja');
   const [langAuto, setLangAuto]  = useState(false);
@@ -570,6 +580,19 @@ export default function SettingsPage() {
     } catch { /* ignore */ }
   }, []);
 
+  // フォロー済みタグを Supabase から取得
+  useEffect(() => {
+    if (!user) return;
+    (supabase as any)
+      .from('follows')
+      .select('tag')
+      .eq('follower_id', user.id)
+      .eq('type', 'hashtag')
+      .then(({ data }: { data: Array<{ tag: string }> | null }) => {
+        setFollowedTags(new Set((data ?? []).map(r => r.tag).filter(Boolean)));
+      });
+  }, [user]);
+
   function setCardBg(v: string)       { setCardBgState(v);        localStorage.setItem('sync_card_bg', v); }
   function setHashtagColor(v: string) { setHashtagColorState(v); if (v) localStorage.setItem('sync_hashtag_color', v); else localStorage.removeItem('sync_hashtag_color'); }
   function setMyBubbleColor(v: string)    { setMyBubbleColorState(v);    localStorage.setItem('sync_my_bubble_color',    v); }
@@ -598,6 +621,31 @@ export default function SettingsPage() {
 
   function setN(key: keyof NotificationSettings, val: boolean) {
     setNotif((prev) => ({ ...prev, [key]: val }));
+  }
+
+  // ジャンル検索フィルター
+  const allGenreTags = useMemo(() =>
+    [...new Set(GENRES.flatMap(g => GENRE_HASHTAGS[g.label] ?? []))],
+    []
+  );
+  const searchResults = useMemo(() => {
+    const q = genreSearch.trim();
+    if (!q) return [];
+    const matched = allGenreTags.filter(t => t.includes(q));
+    if (matched.length === 0) {
+      return [q.startsWith('#') ? q : `#${q}`];
+    }
+    return matched;
+  }, [allGenreTags, genreSearch]);
+
+  async function handleTagToggle(tag: string) {
+    if (followedTags.has(tag)) {
+      await unfollowHashtag(tag);
+      setFollowedTags(prev => { const n = new Set(prev); n.delete(tag); return n; });
+    } else {
+      await followHashtag(tag);
+      setFollowedTags(prev => new Set([...prev, tag]));
+    }
   }
 
   function handleSaveEmail(v: string) {
@@ -961,6 +1009,129 @@ export default function SettingsPage() {
             onTap={() => router.push('/payment')}
             borderBottom={false}
           />
+        </div>
+
+        {/* ⑤.5 興味のあるジャンル */}
+        <SectionHeader icon="🎯" title="興味のあるジャンル" />
+        <p style={{ fontSize: 12, color: 'var(--muted)', padding: '0 4px 10px', lineHeight: 1.5 }}>
+          タイムラインに表示されるコンテンツをカスタマイズできます
+        </p>
+
+        {/* 検索バー */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          borderRadius: 12, border: '1px solid rgba(255,255,255,0.12)',
+          background: 'rgba(255,255,255,0.06)', padding: '8px 12px',
+          marginBottom: 12, boxSizing: 'border-box',
+        }}>
+          <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 14 }}>🔍</span>
+          <input
+            type="text"
+            value={genreSearch}
+            onChange={e => setGenreSearch(e.target.value)}
+            placeholder="ハッシュタグを検索…"
+            style={{
+              flex: 1, background: 'transparent', border: 'none', outline: 'none',
+              color: 'var(--foreground)', fontSize: 14,
+            }}
+          />
+          {genreSearch && (
+            <button
+              onClick={() => setGenreSearch('')}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', padding: 0, lineHeight: 1 }}
+            >✕</button>
+          )}
+        </div>
+
+        {/* 検索結果チップ */}
+        {genreSearch.trim() && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+            {searchResults.map(tag => {
+              const isFollowed = followedTags.has(tag);
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => handleTagToggle(tag)}
+                  style={{
+                    padding: '6px 12px', borderRadius: 20, border: 'none', cursor: 'pointer',
+                    background: isFollowed ? RAINBOW : 'rgba(255,255,255,0.08)',
+                    color: isFollowed ? '#0d0d1a' : 'rgba(255,255,255,0.8)',
+                    fontSize: 12, fontWeight: isFollowed ? 700 : 400,
+                    WebkitTapHighlightColor: 'transparent',
+                  }}
+                >
+                  {isFollowed ? `✓ ${tag}` : `+ ${tag}`}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ジャンルアコーディオン */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 4 }}>
+          {GENRES.map(({ label, emoji }) => {
+            const isExpanded = expandedGenre === label;
+            const tags = GENRE_HASHTAGS[label] ?? [];
+            const followedCount = tags.filter(t => followedTags.has(t)).length;
+            return (
+              <div key={label} style={{ gridColumn: isExpanded ? '1 / -1' : 'auto' }}>
+                <button
+                  type="button"
+                  onClick={() => setExpandedGenre(isExpanded ? null : label)}
+                  style={{
+                    width: '100%', display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    gap: 4, padding: '12px 6px', borderRadius: isExpanded ? '12px 12px 0 0' : 12,
+                    border: isExpanded ? '1.5px solid var(--brand)' : '1.5px solid rgba(255,255,255,0.08)',
+                    borderBottom: isExpanded ? 'none' : undefined,
+                    background: isExpanded ? 'rgba(124,111,232,0.12)' : 'rgba(255,255,255,0.05)',
+                    cursor: 'pointer',
+                    WebkitTapHighlightColor: 'transparent',
+                  }}
+                >
+                  <span style={{ fontSize: 22 }}>{emoji}</span>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: isExpanded ? 'var(--foreground)' : 'rgba(255,255,255,0.7)', lineHeight: 1.3, textAlign: 'center' }}>
+                    {label}
+                  </span>
+                  {followedCount > 0 && (
+                    <span style={{ fontSize: 9, color: 'var(--brand)', fontWeight: 700 }}>
+                      {followedCount}/{tags.length}
+                    </span>
+                  )}
+                </button>
+                {isExpanded && (
+                  <div style={{
+                    border: '1.5px solid var(--brand)', borderTop: 'none',
+                    borderRadius: '0 0 12px 12px',
+                    padding: '12px 10px',
+                    background: 'rgba(124,111,232,0.06)',
+                    display: 'flex', flexWrap: 'wrap', gap: 8,
+                  }}>
+                    {tags.map(tag => {
+                      const isFollowed = followedTags.has(tag);
+                      return (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => handleTagToggle(tag)}
+                          style={{
+                            padding: '6px 12px', borderRadius: 20, border: 'none', cursor: 'pointer',
+                            background: isFollowed ? 'var(--brand)' : 'rgba(255,255,255,0.08)',
+                            color: isFollowed ? '#0d0d1a' : 'rgba(255,255,255,0.8)',
+                            fontSize: 12, fontWeight: isFollowed ? 700 : 400,
+                            WebkitTapHighlightColor: 'transparent',
+                          }}
+                        >
+                          {isFollowed ? `✓ ${tag}` : `+ ${tag}`}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* ⑥ 言語設定 */}

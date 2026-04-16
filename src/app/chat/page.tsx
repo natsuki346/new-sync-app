@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { type Conversation } from '@/lib/mockData';
@@ -49,6 +49,18 @@ export default function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading,       setLoading]       = useState(true);
   const [friends,       setFriends]       = useState<Friend[]>([]);
+  const [pinnedIds,     setPinnedIds]     = useState<Set<string>>(new Set());
+  const [mutedIds,      setMutedIds]      = useState<Set<string>>(new Set());
+
+  // ── localStorage からピン止め/ミュート復元 ─────────────────────
+  useEffect(() => {
+    try {
+      const p = localStorage.getItem('sync_pinned_convs');
+      if (p) setPinnedIds(new Set(JSON.parse(p) as string[]));
+      const m = localStorage.getItem('sync_muted_convs');
+      if (m) setMutedIds(new Set(JSON.parse(m) as string[]));
+    } catch { /* ignore */ }
+  }, []);
 
   // ── 会話リスト取得 ──────────────────────────────────────────────
   useEffect(() => {
@@ -166,6 +178,13 @@ export default function ChatPage() {
     [conversations, filter, q],
   );
 
+  // ピン止め会話を先頭に
+  const sortedFiltered = useMemo(() => {
+    const pinned = filtered.filter(c => pinnedIds.has(c.id));
+    const rest   = filtered.filter(c => !pinnedIds.has(c.id));
+    return [...pinned, ...rest];
+  }, [filtered, pinnedIds]);
+
   // ── Friends 検索（シート内） ────────────────────────────────────
   const fq = friendSearch.trim().toLowerCase();
   const visibleFriends = friends.filter(
@@ -183,6 +202,32 @@ export default function ChatPage() {
     setSheetMode(null);
     setFriendSearch('');
     setSelectedIds([]);
+  }
+
+  // ── スワイプアクション ──────────────────────────────────────────
+  async function handleDelete(id: string) {
+    await (supabase as any).from('conversations').delete().eq('id', id);
+    setConversations(prev => prev.filter(c => c.id !== id));
+    setPinnedIds(prev => { const n = new Set(prev); n.delete(id); localStorage.setItem('sync_pinned_convs', JSON.stringify([...n])); return n; });
+    setMutedIds(prev => { const n = new Set(prev); n.delete(id); localStorage.setItem('sync_muted_convs', JSON.stringify([...n])); return n; });
+  }
+
+  function handlePin(id: string) {
+    setPinnedIds(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) { n.delete(id); } else { n.add(id); }
+      localStorage.setItem('sync_pinned_convs', JSON.stringify([...n]));
+      return n;
+    });
+  }
+
+  function handleMute(id: string) {
+    setMutedIds(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) { n.delete(id); } else { n.add(id); }
+      localStorage.setItem('sync_muted_convs', JSON.stringify([...n]));
+      return n;
+    });
   }
 
   // ── 新規DM作成 ──────────────────────────────────────────────────
@@ -416,79 +461,93 @@ export default function ChatPage() {
             </p>
           </div>
         ) : (
-          filtered.map((c) => (
-            <button
+          sortedFiltered.map((c) => (
+            <SwipeRow
               key={c.id}
-              onClick={() => router.push(`/chat/${c.id}`)}
-              className="w-full flex items-center gap-3 px-4 py-3.5 transition-colors duration-150 text-left active:opacity-70"
-              style={{ borderBottom: '1px solid var(--surface-2)' }}
+              isPinned={pinnedIds.has(c.id)}
+              isMuted={mutedIds.has(c.id)}
+              onDelete={() => handleDelete(c.id)}
+              onMute={() => handleMute(c.id)}
+              onPin={() => handlePin(c.id)}
             >
-              {/* アバター */}
-              <div className="relative flex-shrink-0">
-                {c.isGroup ? (
-                  <GroupAvatar avatars={c.memberAvatars ?? []} />
-                ) : (
-                  <div
-                    className="w-12 h-12 rounded-full flex items-center justify-center text-2xl"
-                    style={{ background: 'var(--surface-2)' }}
-                  >
-                    {c.avatar}
-                  </div>
-                )}
-                {c.unread && (
-                  <span
-                    className="absolute top-0 right-0 w-3 h-3 rounded-full border-2"
-                    style={{
-                      background: RAINBOW,
-                      borderColor: 'var(--background)',
-                    }}
-                  />
-                )}
-              </div>
-
-              {/* テキスト */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-baseline justify-between gap-2 mb-0.5">
-                  <div className="flex items-baseline gap-1.5 min-w-0">
-                    <span
-                      className="text-sm font-semibold truncate"
-                      style={{ color: c.unread ? 'var(--foreground)' : 'rgba(255,255,255,0.6)' }}
+              <button
+                onClick={() => router.push(`/chat/${c.id}`)}
+                className="w-full flex items-center gap-3 px-4 py-3.5 transition-colors duration-150 text-left active:opacity-70"
+                style={{ borderBottom: '1px solid var(--surface-2)' }}
+              >
+                {/* アバター */}
+                <div className="relative flex-shrink-0">
+                  {c.isGroup ? (
+                    <GroupAvatar avatars={c.memberAvatars ?? []} />
+                  ) : (
+                    <div
+                      className="w-12 h-12 rounded-full flex items-center justify-center text-2xl"
+                      style={{ background: 'var(--surface-2)' }}
                     >
-                      {c.name}
-                    </span>
-                    {c.handle && (
-                      <span className="text-xs truncate" style={{ color: 'var(--muted)' }}>
-                        {c.handle}
-                      </span>
-                    )}
-                    {c.isGroup && (
-                      <span
-                        className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0"
-                        style={{
-                          background: 'rgba(255,26,26,0.12)',
-                          color: 'var(--brand)',
-                          border: '1px solid rgba(255,26,26,0.25)',
-                        }}
-                      >
-                        Group
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[11px] flex-shrink-0" style={{ color: 'var(--muted)' }}>
-                    {c.time}
-                  </span>
+                      {c.avatar}
+                    </div>
+                  )}
+                  {c.unread && (
+                    <span
+                      className="absolute top-0 right-0 w-3 h-3 rounded-full border-2"
+                      style={{ background: RAINBOW, borderColor: 'var(--background)' }}
+                    />
+                  )}
+                  {pinnedIds.has(c.id) && (
+                    <span
+                      className="absolute bottom-0 right-0 text-[10px] leading-none"
+                      style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' }}
+                    >📌</span>
+                  )}
                 </div>
-                <p
-                  className="text-xs truncate"
-                  style={{
-                    color: c.unread ? 'rgba(255,255,255,0.75)' : 'var(--muted)',
-                    fontWeight: c.unread ? 500 : 400,
-                  }}
-                >
-                  {c.preview}
-                </p>
-              </div>
-            </button>
+
+                {/* テキスト */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline justify-between gap-2 mb-0.5">
+                    <div className="flex items-baseline gap-1.5 min-w-0">
+                      <span
+                        className="text-sm font-semibold truncate"
+                        style={{ color: c.unread ? 'var(--foreground)' : 'rgba(255,255,255,0.6)' }}
+                      >
+                        {c.name}
+                      </span>
+                      {c.handle && (
+                        <span className="text-xs truncate" style={{ color: 'var(--muted)' }}>
+                          {c.handle}
+                        </span>
+                      )}
+                      {c.isGroup && (
+                        <span
+                          className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                          style={{
+                            background: 'rgba(255,26,26,0.12)',
+                            color: 'var(--brand)',
+                            border: '1px solid rgba(255,26,26,0.25)',
+                          }}
+                        >
+                          Group
+                        </span>
+                      )}
+                      {mutedIds.has(c.id) && (
+                        <span className="text-[10px]" style={{ color: 'var(--muted)' }}>🔇</span>
+                      )}
+                    </div>
+                    <span className="text-[11px] flex-shrink-0" style={{ color: 'var(--muted)' }}>
+                      {c.time}
+                    </span>
+                  </div>
+                  <p
+                    className="text-xs truncate"
+                    style={{
+                      color: c.unread ? 'rgba(255,255,255,0.75)' : 'var(--muted)',
+                      fontWeight: c.unread ? 500 : 400,
+                    }}
+                  >
+                    {c.preview}
+                  </p>
+                </div>
+              </button>
+            </SwipeRow>
           ))
         )}
       </main>
@@ -642,7 +701,7 @@ export default function ChatPage() {
                       disabled={selectedIds.length < 2}
                       className="text-sm font-bold px-3 py-1 rounded-full transition-all"
                       style={{
-                        background: selectedIds.length >= 2 ? 'var(--brand)' : 'transparent',
+                        background: selectedIds.length >= 2 ? RAINBOW : 'transparent',
                         color: selectedIds.length >= 2 ? '#0d0d1a' : 'var(--muted)',
                         border: selectedIds.length >= 2 ? 'none' : '1px solid var(--surface-2)',
                       }}
@@ -712,7 +771,7 @@ export default function ChatPage() {
                         <div
                           className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 transition-all"
                           style={{
-                            background: selected ? 'var(--brand)' : 'transparent',
+                            background: selected ? RAINBOW : 'transparent',
                             border: selected ? 'none' : '2px solid var(--surface-2)',
                           }}
                         >
@@ -758,7 +817,7 @@ export default function ChatPage() {
                 <button
                   onClick={() => openSheet('menu')}
                   className="px-8 py-3 rounded-full text-sm font-bold transition-all active:scale-95"
-                  style={{ background: 'var(--brand)', color: '#ffffff' }}
+                  style={{ background: RAINBOW, color: '#ffffff' }}
                 >
                   {t('back')}
                 </button>
@@ -767,6 +826,100 @@ export default function ChatPage() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// ── スワイプ行 ────────────────────────────────────────────────────
+
+function SwipeRow({
+  children,
+  onDelete,
+  onMute,
+  onPin,
+  isPinned,
+  isMuted,
+}: {
+  children: React.ReactNode;
+  onDelete: () => void;
+  onMute: () => void;
+  onPin: () => void;
+  isPinned: boolean;
+  isMuted: boolean;
+}) {
+  const [offset,          setOffset]         = useState(0);
+  const [transitioning,   setTransitioning]  = useState(false);
+  const startX = useRef(0);
+  const ACTION_W = 130;
+
+  function handleTouchStart(e: React.TouchEvent) {
+    startX.current = e.touches[0].clientX;
+    setTransitioning(false);
+  }
+  function handleTouchMove(e: React.TouchEvent) {
+    const dx = e.touches[0].clientX - startX.current;
+    setOffset(Math.max(-ACTION_W, Math.min(ACTION_W, dx)));
+  }
+  function handleTouchEnd() {
+    setTransitioning(true);
+    if (Math.abs(offset) < 60) {
+      setOffset(0);
+    } else if (offset < 0) {
+      setOffset(-ACTION_W);
+    } else {
+      setOffset(ACTION_W);
+    }
+  }
+  function snap() { setTransitioning(true); setOffset(0); }
+
+  const btnBase: React.CSSProperties = {
+    flex: 1, border: 'none', cursor: 'pointer',
+    display: 'flex', flexDirection: 'column',
+    alignItems: 'center', justifyContent: 'center',
+    gap: 4, fontSize: 11, fontWeight: 700, color: '#fff',
+  };
+
+  return (
+    <div style={{ position: 'relative', overflow: 'hidden' }}>
+      {/* 左アクション（右スワイプで露出）: ピン止め + 既読 */}
+      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: ACTION_W, display: 'flex' }}>
+        <button onClick={() => { onPin(); snap(); }} style={{ ...btnBase, background: '#E8A020' }}>
+          <span style={{ fontSize: 18 }}>📌</span>
+          {isPinned ? 'ピン解除' : 'ピン止め'}
+        </button>
+        <button onClick={() => snap()} style={{ ...btnBase, background: '#118AB2' }}>
+          <span style={{ fontSize: 18 }}>✅</span>
+          既読
+        </button>
+      </div>
+
+      {/* 右アクション（左スワイプで露出）: ミュート + 削除 */}
+      <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: ACTION_W, display: 'flex' }}>
+        <button onClick={() => { onMute(); snap(); }} style={{ ...btnBase, background: '#555555' }}>
+          <span style={{ fontSize: 18 }}>🔇</span>
+          {isMuted ? 'ミュート解除' : 'ミュート'}
+        </button>
+        <button onClick={() => { onDelete(); snap(); }} style={{ ...btnBase, background: '#E84040' }}>
+          <span style={{ fontSize: 18 }}>🗑️</span>
+          削除
+        </button>
+      </div>
+
+      {/* コンテンツ（スライド） */}
+      <div
+        style={{
+          transform: `translateX(${offset}px)`,
+          transition: transitioning ? 'transform 0.2s ease' : 'none',
+          position: 'relative', zIndex: 1,
+          background: 'var(--background)',
+          willChange: 'transform',
+        }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        {children}
+      </div>
     </div>
   );
 }

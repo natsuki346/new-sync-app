@@ -65,27 +65,15 @@ export default function BottomNav() {
       <Link href="/home" className="flex flex-col items-center gap-1"
         style={{ cursor: 'pointer', WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
       >
-        <svg width="24" height="24" viewBox="0 0 24 24"
-          fill="none" strokeLinecap="round" strokeLinejoin="round"
-        >
+        <svg viewBox="0 0 24 24" width="24" height="24">
           <defs>
             <linearGradient id="home-rainbow" x1="0%" y1="0%" x2="100%" y2="0%">
               {stops.map((c, i) => <stop key={i} offset={OFFSETS[i]} stopColor={c} />)}
             </linearGradient>
           </defs>
-          {/* 家の外形 */}
           <path
-            d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"
-            fill={isActive('/home') ? 'url(#home-rainbow)' : 'none'}
-            stroke={isActive('/home') ? 'none' : 'var(--muted)'}
-            strokeWidth="2"
-          />
-          {/* ドア */}
-          <path
-            d="M9 21V12h6v9"
-            fill={isActive('/home') ? 'url(#home-rainbow)' : 'none'}
-            stroke={isActive('/home') ? 'none' : 'var(--muted)'}
-            strokeWidth="2"
+            d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"
+            fill={isActive('/home') ? 'url(#home-rainbow)' : 'var(--muted)'}
           />
         </svg>
         <span className="text-xs font-medium"

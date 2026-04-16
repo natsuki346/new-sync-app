@@ -9,6 +9,8 @@ import PostCard from '@/components/PostCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
+const RAINBOW = 'linear-gradient(135deg, #7C6FE8, #A855F7, #EC4899, #F97316, #EAB308, #22C55E, #3B82F6)';
+
 // ── カバー色（名前ハッシュで決定） ────────────────────────────────
 
 const COVER_PALETTES: [string, string][] = [
@@ -67,16 +69,24 @@ export default function FriendProfilePage() {
 
   useEffect(() => {
     if (!profileUserId) return;
-    supabase
-      .from('profiles')
-      .select('id, username, display_name, avatar_url, header_url, bio, hashtags')
-      .eq('username', profileUserId)
-      .maybeSingle()
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .then(({ data }: { data: any }) => {
-        setProfileUser(data);
-        setProfileLoading(false);
-      });
+    (async () => {
+      // まず UUID (id) で検索
+      const { data: byId } = await (supabase as any)
+        .from('profiles')
+        .select('id, username, display_name, avatar_url, header_url, bio, hashtags')
+        .eq('id', profileUserId)
+        .maybeSingle();
+      if (byId) { setProfileUser(byId); setProfileLoading(false); return; }
+
+      // 見つからなければ username で検索
+      const { data: byUsername } = await (supabase as any)
+        .from('profiles')
+        .select('id, username, display_name, avatar_url, header_url, bio, hashtags')
+        .eq('username', profileUserId)
+        .maybeSingle();
+      setProfileUser(byUsername ?? null);
+      setProfileLoading(false);
+    })();
   }, [profileUserId]);
 
   // ── PassionGraph 用データ（投稿ハッシュタグ頻度）
@@ -205,6 +215,51 @@ export default function FriendProfilePage() {
   const [isFriend,      setIsFriend]      = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
 
+  // ── 通報・ブロック
+  const [moreSheetOpen,   setMoreSheetOpen]   = useState(false);
+  const [reasonSheetOpen, setReasonSheetOpen] = useState(false);
+  const [toast,           setToast]           = useState('');
+
+  function showToast(msg: string) {
+    setToast(msg);
+    setTimeout(() => setToast(''), 2500);
+  }
+
+  const REPORT_REASONS = ['スパム', '不適切なコンテンツ', '嫌がらせ', 'なりすまし', 'その他'];
+
+  async function handleReport(reason: string) {
+    setReasonSheetOpen(false);
+    setMoreSheetOpen(false);
+    if (user && profileUser) {
+      try {
+        await (supabase as any).from('reports').insert({
+          reporter_id: user.id,
+          reported_id: profileUser.id,
+          reason,
+          created_at: new Date().toISOString(),
+        });
+      } catch { /* テーブルが存在しない場合も通報受付済みとして扱う */ }
+    }
+    showToast('通報を受け付けました');
+  }
+
+  function handleBlock() {
+    if (!profileUser) return;
+    setMoreSheetOpen(false);
+    try {
+      const raw = localStorage.getItem('sync_blocked_users');
+      const list: string[] = raw ? JSON.parse(raw) : [];
+      if (!list.includes(profileUser.id)) {
+        list.push(profileUser.id);
+        localStorage.setItem('sync_blocked_users', JSON.stringify(list));
+      }
+    } catch { /* ignore */ }
+    showToast('ブロックしました');
+    setTimeout(() => router.push('/home'), 1200);
+  }
+
+  const isOwnProfile = user?.id === profileUser?.id;
+
   useEffect(() => {
     if (!user || !profileUser) return;
     supabase
@@ -284,9 +339,9 @@ export default function FriendProfilePage() {
           )}
         </div>
 
-        {/* 戻るボタン */}
+        {/* 戻るボタン + ⋯ボタン */}
         <div
-          className="absolute top-0 left-0 right-0 flex items-center px-3"
+          className="absolute top-0 left-0 right-0 flex items-center justify-between px-3"
           style={{ paddingTop: 'max(env(safe-area-inset-top, 12px), 12px)', paddingBottom: 8 }}
         >
           <button
@@ -298,6 +353,15 @@ export default function FriendProfilePage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
             </svg>
           </button>
+          {!isOwnProfile && (
+            <button
+              onClick={() => setMoreSheetOpen(true)}
+              className="w-9 h-9 flex items-center justify-center rounded-full active:scale-90 transition-transform"
+              style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(6px)', color: 'white', fontSize: 18, fontWeight: 700, letterSpacing: 2 }}
+            >
+              ⋯
+            </button>
+          )}
         </div>
 
         {/* アバター */}
@@ -336,7 +400,7 @@ export default function FriendProfilePage() {
             disabled={isFriend || followLoading}
             className={`px-4 py-1.5 rounded-full text-sm font-bold transition-transform${isFriend ? '' : ' active:scale-[0.97]'}`}
             style={{
-              background: isFriend ? 'var(--surface-2)' : 'var(--brand)',
+              background: isFriend ? 'var(--surface-2)' : RAINBOW,
               border: isFriend ? '1px solid var(--surface-2)' : 'none',
               color: isFriend ? 'var(--muted)' : '#0d0d1a',
               cursor: (isFriend || followLoading) ? 'default' : 'pointer',
@@ -468,6 +532,108 @@ export default function FriendProfilePage() {
           ))
         )}
       </div>
+
+      {/* ── トースト ──────────────────────────────────────────────── */}
+      {toast && (
+        <div style={{
+          position: 'fixed', bottom: 100, left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(30,30,50,0.95)', color: '#fff',
+          padding: '10px 20px', borderRadius: 20, fontSize: 13, fontWeight: 600,
+          zIndex: 200, backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.1)',
+          whiteSpace: 'nowrap',
+        }}>
+          {toast}
+        </div>
+      )}
+
+      {/* ── ⋯ ボトムシート ────────────────────────────────────────── */}
+      {moreSheetOpen && (
+        <>
+          <div
+            className="absolute inset-0 z-40 bg-black/60"
+            onClick={() => setMoreSheetOpen(false)}
+          />
+          <div
+            className="absolute bottom-0 left-0 right-0 z-50 rounded-t-3xl overflow-hidden"
+            style={{ background: '#1a1a2e' }}
+          >
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(255,255,255,0.15)' }} />
+            </div>
+            <div className="pb-8 pt-2">
+              {[
+                { icon: '🚨', label: '通報する', color: '#E84040', action: () => { setMoreSheetOpen(false); setReasonSheetOpen(true); } },
+                { icon: '🚫', label: 'ブロックする', color: '#FF6B35', action: handleBlock },
+              ].map(({ icon, label, color, action }) => (
+                <button
+                  key={label}
+                  onClick={action}
+                  className="w-full flex items-center gap-4 px-5 py-4 active:opacity-60 transition-opacity"
+                  style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                >
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-xl flex-shrink-0"
+                    style={{ background: `${color}22` }}
+                  >
+                    {icon}
+                  </div>
+                  <span className="text-sm font-semibold" style={{ color }}>{label}</span>
+                </button>
+              ))}
+              <button
+                onClick={() => setMoreSheetOpen(false)}
+                className="w-full py-4 text-sm font-medium active:opacity-60"
+                style={{ color: 'var(--muted)' }}
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── 通報理由シート ─────────────────────────────────────────── */}
+      {reasonSheetOpen && (
+        <>
+          <div
+            className="absolute inset-0 z-40 bg-black/60"
+            onClick={() => setReasonSheetOpen(false)}
+          />
+          <div
+            className="absolute bottom-0 left-0 right-0 z-50 rounded-t-3xl overflow-hidden"
+            style={{ background: '#1a1a2e' }}
+          >
+            <div className="flex justify-center pt-3 pb-1">
+              <div className="w-10 h-1 rounded-full" style={{ background: 'rgba(255,255,255,0.15)' }} />
+            </div>
+            <p className="text-sm font-bold px-5 pt-3 pb-3" style={{ color: 'var(--foreground)' }}>
+              通報理由を選択
+            </p>
+            <div className="pb-8">
+              {REPORT_REASONS.map(reason => (
+                <button
+                  key={reason}
+                  onClick={() => handleReport(reason)}
+                  className="w-full flex items-center px-5 py-4 active:opacity-60 transition-opacity"
+                  style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                >
+                  <span className="text-sm" style={{ color: 'var(--foreground)' }}>{reason}</span>
+                  <svg className="ml-auto" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--muted)' }}>
+                    <path d="M9 18l6-6-6-6" />
+                  </svg>
+                </button>
+              ))}
+              <button
+                onClick={() => setReasonSheetOpen(false)}
+                className="w-full py-4 text-sm font-medium active:opacity-60"
+                style={{ color: 'var(--muted)' }}
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

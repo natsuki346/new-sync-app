@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
 import ReactionFloatingEffect from "@/components/ReactionFloatingEffect";
 import SyncLogo from "@/components/SyncLogo";
 import { useAuth } from "@/contexts/AuthContext";
@@ -39,7 +39,7 @@ const getToD = (h: number): ToD =>
 
 const LANE_COUNT       = 7;
 const MAX_BUBBLES      = 49;
-const MAX_CHARS        = 15;
+const MAX_CHARS_DEFAULT = 15;
 const INPUT_H          = 68;
 const BUBBLE_LIFETIME  = 20;      // 秒
 const DANGER_THRESHOLD = 5;       // 残り5秒で消滅予兆
@@ -566,6 +566,8 @@ let _lastVisitTime                           = Date.now(); // タブ切り替え
 
 export default function BubblePage() {
   const t = useTranslations('bubble');
+  const locale = useLocale();
+  const MAX_CHARS = locale === 'en' ? 28 : MAX_CHARS_DEFAULT;
   const router = useRouter();
   const { user, profile, loading } = useAuth();
   const [tod,           setTod]          = useState<ToD>(() => getToD(new Date().getHours()));
@@ -1638,7 +1640,7 @@ export default function BubblePage() {
             />
             <span style={{
               fontSize:11, flexShrink:0, minWidth:20, textAlign:"right", fontVariantNumeric:"tabular-nums",
-              color: input.length>=MAX_CHARS ? "#E63946" : input.length>=12 ? "#F4A261" : "rgba(255,255,255,0.22)",
+              color: input.length>=MAX_CHARS ? "#E63946" : input.length>=(MAX_CHARS-3) ? "#F4A261" : "rgba(255,255,255,0.22)",
             }}>
               {MAX_CHARS - input.length}
             </span>

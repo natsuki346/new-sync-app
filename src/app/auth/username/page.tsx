@@ -61,6 +61,7 @@ export default function UsernamePage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!canSubmit || username.trim().length < 3) return;
     if (!USERNAME_RE.test(username)) {
       setError(t('invalidChars'));
       return;
@@ -176,7 +177,7 @@ export default function UsernamePage() {
 
         <button
           type="submit"
-          disabled={!canSubmit}
+          disabled={!canSubmit || username.trim().length < 3}
           style={{
             marginTop: 8,
             padding: '14px 0',

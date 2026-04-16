@@ -78,6 +78,7 @@ export default function ChatDetailPage() {
   const [settingsOpen,     setSettingsOpen]     = useState(false);
   const [myBubbleColor,    setMyBubbleColor]    = useState('');
   const [theirBubbleColor, setTheirBubbleColor] = useState('');
+  const [otherUserId,      setOtherUserId]      = useState<string | null>(null);
 
   const bottomRef      = useRef<HTMLDivElement>(null);
   const fileInputRef   = useRef<HTMLInputElement>(null);
@@ -124,6 +125,7 @@ export default function ChatDetailPage() {
 
       // conversation_id として見つからなかった → user_id として扱い DM を検索 / 作成
       const targetUserId = params.id;
+      if (!cancelled) setOtherUserId(targetUserId);
 
       const { data: myConvIds } = await (supabase as any)
         .from('conversation_members')
@@ -186,42 +188,75 @@ export default function ChatDetailPage() {
     let cancelled = false;
 
     (async () => {
-      const { data, error } = await (supabase as any)
+      // ① 会話の基本情報（type, name）を取得
+      const { data: conv, error: convErr } = await (supabase as any)
         .from('conversations')
-        .select(`
-          id, type, name,
-          conversation_members (
-            user_id,
-            profiles (id, username, display_name, avatar_url)
-          )
-        `)
+        .select('id, type, name')
         .eq('id', convId)
         .single();
 
-      if (cancelled || error || !data) return;
+      if (cancelled || convErr || !conv) return;
 
-      const members: any[] = data.conversation_members ?? [];
+      // ② conversation_members + profiles を独立クエリで取得（ネストジョイン非依存）
+      const { data: membersRaw } = await (supabase as any)
+        .from('conversation_members')
+        .select(`
+          user_id,
+          profiles (id, username, display_name, avatar_url)
+        `)
+        .eq('conversation_id', convId);
+
+      if (cancelled) return;
+
+      const members: any[] = membersRaw ?? [];
+
+      // profiles が配列で返る場合も正規化
+      const normalize = (raw: any) =>
+        Array.isArray(raw) ? (raw[0] ?? null) : (raw ?? null);
+
       let info: Conversation;
 
-      if (data.type === 'dm') {
-        const other = members.find((m: any) => m.user_id !== user.id);
-        const prof  = other?.profiles;
+      if (conv.type === 'dm') {
+        const otherMember = members.find((m: any) => m.user_id !== user.id);
+        const uid         = otherMember?.user_id ?? null;
+        let   prof: any   = normalize(otherMember?.profiles);
+
+        // NOTE: profilesテーブルのRLSに以下のpolicyが必要：
+        // CREATE POLICY "profiles are viewable by authenticated users"
+        // ON profiles FOR SELECT
+        // TO authenticated
+        // USING (true);
+        //
+        // JOINが失敗した場合（RLS未設定・FK未定義など）、直接profilesテーブルから取得
+        if (!prof && uid) {
+          const { data: fallbackProfile } = await (supabase as any)
+            .from('profiles')
+            .select('id, username, display_name, avatar_url')
+            .eq('id', uid)
+            .maybeSingle();
+          prof = normalize(fallbackProfile);
+        }
+
+        if (!cancelled && uid) setOtherUserId(uid);
+
         info = {
-          id:      data.id,
+          id:      conv.id,
           avatar:  prof?.avatar_url   ?? '👤',
-          name:    prof?.display_name ?? 'Unknown',
-          handle:  prof ? `@${prof.username}` : undefined,
+          name:    prof?.display_name ?? prof?.username ?? 'Unknown',
+          handle:  prof?.username ? `@${prof.username}` : undefined,
           preview: '',
           time:    'Now',
           unread:  false,
           isGroup: false,
         };
       } else {
-        const memberAvatars = members.map((m: any) => m.profiles?.avatar_url ?? '👤');
+        const memberAvatars = members.map((m: any) =>
+          normalize(m.profiles)?.avatar_url ?? '👤'
+        );
         info = {
-          id:           data.id,
+          id:           conv.id,
           avatar:       memberAvatars[0] ?? '👥',
-          name:         data.name ?? 'Group',
+          name:         conv.name ?? 'Group',
           preview:      '',
           time:         'Now',
           unread:       false,
@@ -754,7 +789,7 @@ export default function ChatDetailPage() {
         >
           {convInfo.isGroup
             ? <GroupSettings  conv={convInfo} onClose={() => setSettingsOpen(false)} />
-            : <DmSettings     conv={convInfo} onClose={() => setSettingsOpen(false)} />
+            : <DmSettings     conv={convInfo} onClose={() => setSettingsOpen(false)} otherUserId={otherUserId} />
           }
         </div>
       )}
@@ -937,8 +972,9 @@ function ToggleRow({ icon, label }: { icon: React.ReactNode; label: string }) {
 // DM 設定画面
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-function DmSettings({ conv, onClose }: { conv: Conversation; onClose: () => void }) {
+function DmSettings({ conv, onClose, otherUserId }: { conv: Conversation; onClose: () => void; otherUserId: string | null }) {
   const t = useTranslations('chat');
+  const router = useRouter();
   return (
     <div className="flex flex-col h-full">
       <SettingsHeader title={t('talkSettings')} onBack={onClose} />
@@ -966,11 +1002,14 @@ function DmSettings({ conv, onClose }: { conv: Conversation; onClose: () => void
             </p>
           )}
           <button
+            onClick={() => otherUserId && router.push(`/profile/${otherUserId}`)}
             className="mt-4 px-5 py-1.5 rounded-full text-xs font-semibold active:scale-95 transition-transform"
             style={{
               background: 'rgba(255,26,26,0.1)',
               border: '1px solid rgba(255,26,26,0.3)',
               color: 'var(--brand)',
+              opacity: otherUserId ? 1 : 0.4,
+              cursor: otherUserId ? 'pointer' : 'default',
             }}
           >
             {t('viewProfile')}
