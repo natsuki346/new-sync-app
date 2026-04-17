@@ -17,6 +17,8 @@ type ChatMsg = {
   from: 'me' | 'them';
   text?: string;
   image?: string;
+  audioUrl?: string;
+  audioDuration?: number;
   time: string;
   isRead: boolean;
   dateLabel: string;
@@ -29,6 +31,12 @@ type DateSep = { type: 'date'; label: string; key: string };
 function nowTime() {
   const d = new Date();
   return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
 function fmtMsgTime(iso: string) {
@@ -83,6 +91,16 @@ export default function ChatDetailPage() {
   const bottomRef      = useRef<HTMLDivElement>(null);
   const fileInputRef   = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  // ── ボイスメッセージ用 state / ref ───────────────────────────────
+  const [isRecording,      setIsRecording]      = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [audioBlob,        setAudioBlob]        = useState<Blob | null>(null);
+  const [audioPreviewUrl,  setAudioPreviewUrl]  = useState<string | null>(null);
+  const mediaRecorderRef     = useRef<MediaRecorder | null>(null);
+  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // duration を送信時まで確実に保持するための ref
+  const recordedDurationRef  = useRef<number>(0);
 
   // チャット吹き出し色・文字色を localStorage から読み込む
   const [myMsgColor,    setMyMsgColor]    = useState('');
@@ -280,7 +298,7 @@ export default function ChatDetailPage() {
     (async () => {
       const { data, error } = await (supabase as any)
         .from('messages')
-        .select('id, content, message_type, image_url, created_at, user_id')
+        .select('id, content, message_type, image_url, audio_url, audio_duration_seconds, created_at, user_id')
         .eq('conversation_id', convId)
         .order('created_at', { ascending: true })
         .limit(50);
@@ -289,13 +307,15 @@ export default function ChatDetailPage() {
       if (error) { setMsgsLoading(false); return; }
 
       const msgs: ChatMsg[] = (data ?? []).map((row: any, i: number) => ({
-        id:        i,
-        from:      row.user_id === user.id ? 'me' as const : 'them' as const,
-        text:      row.content    ?? undefined,
-        image:     row.image_url  ?? undefined,
-        time:      fmtMsgTime(row.created_at),
-        isRead:    true,
-        dateLabel: fmtDateLabel(row.created_at),
+        id:            i,
+        from:          row.user_id === user.id ? 'me' as const : 'them' as const,
+        text:          row.message_type === 'text'  ? (row.content   ?? undefined) : undefined,
+        image:         row.message_type === 'image' ? (row.image_url ?? undefined) : undefined,
+        audioUrl:      row.message_type === 'audio' ? (row.audio_url ?? undefined) : undefined,
+        audioDuration: row.audio_duration_seconds ?? undefined,
+        time:          fmtMsgTime(row.created_at),
+        isRead:        true,
+        dateLabel:     fmtDateLabel(row.created_at),
       }));
 
       if (!cancelled) {
@@ -326,13 +346,15 @@ export default function ChatDetailPage() {
           if (row.user_id === user.id) return; // 自分の送信はスキップ
 
           const newMsg: ChatMsg = {
-            id:        Date.now(),
-            from:      'them',
-            text:      row.content   ?? undefined,
-            image:     row.image_url ?? undefined,
-            time:      fmtMsgTime(row.created_at),
-            isRead:    true,
-            dateLabel: fmtDateLabel(row.created_at),
+            id:            Date.now(),
+            from:          'them',
+            text:          row.message_type === 'text'  ? (row.content   ?? undefined) : undefined,
+            image:         row.message_type === 'image' ? (row.image_url ?? undefined) : undefined,
+            audioUrl:      row.message_type === 'audio' ? (row.audio_url ?? undefined) : undefined,
+            audioDuration: row.audio_duration_seconds ?? undefined,
+            time:          fmtMsgTime(row.created_at),
+            isRead:        true,
+            dateLabel:     fmtDateLabel(row.created_at),
           };
 
           setMessages((prev) => [...prev, newMsg]);
@@ -419,6 +441,102 @@ export default function ChatDetailPage() {
     });
     if (insertError) console.error('[sendImage]', insertError);
   };
+
+  // ── ボイスメッセージ送受信 ────────────────────────────────────────
+
+  async function startRecording() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      const chunks: Blob[] = [];
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(chunks, { type: mimeType });
+        setAudioBlob(blob);
+        setAudioPreviewUrl(URL.createObjectURL(blob));
+        stream.getTracks().forEach((t) => t.stop());
+      };
+
+      mediaRecorder.start();
+      mediaRecorderRef.current = mediaRecorder;
+      setIsRecording(true);
+      setRecordingSeconds(0);
+      recordedDurationRef.current = 0;
+
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingSeconds((prev) => {
+          recordedDurationRef.current = prev + 1;
+          return prev + 1;
+        });
+      }, 1000);
+    } catch (err) {
+      console.error('マイクアクセス失敗:', err);
+      alert('マイクへのアクセスを許可してください');
+    }
+  }
+
+  function stopRecording() {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+    setIsRecording(false);
+  }
+
+  function cancelRecording() {
+    stopRecording();
+    if (audioPreviewUrl) URL.revokeObjectURL(audioPreviewUrl);
+    setAudioBlob(null);
+    setAudioPreviewUrl(null);
+    setRecordingSeconds(0);
+  }
+
+  async function sendVoiceMessage() {
+    if (!audioBlob || !user || !convId) return;
+    const duration = recordedDurationRef.current;
+    const ext      = audioBlob.type.includes('mp4') ? 'mp4' : 'webm';
+    const filepath = `voice/${user.id}/${Date.now()}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('chat-audio')
+      .upload(filepath, audioBlob, { contentType: audioBlob.type });
+
+    if (uploadError) {
+      console.error('Voice upload error:', uploadError);
+      alert('送信に失敗しました');
+      return;
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('chat-audio')
+      .getPublicUrl(filepath);
+
+    // ローカルに即反映
+    setMessages((prev) => [
+      ...prev,
+      { id: Date.now(), from: 'me' as const, audioUrl: publicUrl, audioDuration: duration, time: nowTime(), isRead: false, dateLabel: 'Today' },
+    ]);
+
+    const { error: insertError } = await (supabase.from('messages') as any).insert({
+      conversation_id:        convId,
+      user_id:                user.id,
+      message_type:           'audio',
+      audio_url:              publicUrl,
+      audio_duration_seconds: duration,
+      content:                null,
+    });
+    if (insertError) console.error('[sendVoice]', insertError);
+
+    cancelRecording();
+  }
 
   // 日付区切りを挿入
   const rendered: Array<ChatMsg | DateSep> = messages.reduce<Array<ChatMsg | DateSep>>(
@@ -592,7 +710,7 @@ export default function ChatDetailPage() {
               >
                 <div
                   className={`text-sm leading-relaxed select-none ${
-                    msg.image ? 'overflow-hidden p-0' : 'px-3.5 py-2'
+                    (msg.image || msg.audioUrl) ? 'overflow-hidden p-0' : 'px-3.5 py-2'
                   }`}
                   style={
                     isMe
@@ -621,6 +739,20 @@ export default function ChatDetailPage() {
                       alt="sent image"
                       className="max-w-full max-h-60 object-cover"
                       style={{ borderRadius: 'inherit' }}
+                    />
+                  ) : msg.audioUrl ? (
+                    <VoiceMessagePlayer
+                      url={msg.audioUrl}
+                      duration={msg.audioDuration ?? 0}
+                      isMyMessage={isMe}
+                      bubbleColor={
+                        isMe
+                          ? (!myBubbleColor || myBubbleColor === 'rainbow'
+                              ? 'linear-gradient(135deg, #FF6B6B, #FF8E53, #FFD93D, #6BCB77, #4D96FF, #9B59B6)'
+                              : myBubbleColor)
+                          : (theirBubbleColor || 'rgba(255,255,255,0.08)')
+                      }
+                      textColor={isMe ? (myMsgColor || '#ffffff') : (theirMsgColor || 'var(--foreground)')}
                     />
                   ) : (
                     msg.text
@@ -673,112 +805,151 @@ export default function ChatDetailPage() {
       {/* ── 入力エリア ────────────────────────────────────────────── */}
       <div
         className="border-t px-3 pt-2 pb-6 flex-shrink-0"
-        style={{
-          borderColor: 'var(--surface-2)',
-          background: 'var(--background)',
-        }}
+        style={{ borderColor: 'var(--surface-2)', background: 'var(--background)' }}
       >
-        <div className="flex items-center gap-2">
 
-          {/* カメラボタン（常時表示） */}
-          <button
-            onClick={() => cameraInputRef.current?.click()}
-            className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center active:scale-90 transition-transform"
-            style={{
-              background: 'var(--surface)',
-              border: '1px solid var(--surface-2)',
-            }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
-              className="w-[18px] h-[18px]" style={{ color: 'rgba(255,255,255,0.6)' }}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round"
-                d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"
-              />
-              <path strokeLinecap="round" strokeLinejoin="round"
-                d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z"
-              />
-            </svg>
-          </button>
-
-          {/* テキスト入力 */}
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage();
-              }
-            }}
-            placeholder="Message…"
-            className="flex-1 rounded-2xl px-4 py-2.5 text-sm outline-none transition-colors"
-            style={{
-              background: 'var(--surface)',
-              border: '1px solid var(--surface-2)',
-              color: 'var(--foreground)',
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(255,26,26,0.4)';
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = 'var(--surface-2)';
-            }}
-          />
-
-          {/* 右側ボタン群: 未入力→マイク・写真 / 入力中→送信 */}
-          {input.trim() ? (
-            /* 送信ボタン */
+        {/* 録音中UI */}
+        {isRecording ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'rgba(255,59,48,0.1)', borderRadius: 24 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ff3b30', flexShrink: 0, animation: 'pulse 1s ease-in-out infinite' }} />
+            <span style={{ fontSize: 14, color: 'var(--foreground)' }}>録音中 {formatDuration(recordingSeconds)}</span>
+            <div style={{ flex: 1 }} />
             <button
-              onClick={sendMessage}
-              className="w-9 h-9 flex-shrink-0 flex items-center justify-center active:scale-90 transition-all"
+              onClick={cancelRecording}
+              style={{ padding: '5px 12px', borderRadius: 16, background: 'transparent', border: '1px solid var(--muted)', color: 'var(--muted)', fontSize: 13, cursor: 'pointer' }}
+            >
+              キャンセル
+            </button>
+            <button
+              onClick={stopRecording}
+              style={{ width: 36, height: 36, borderRadius: '50%', background: '#ff3b30', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16 }}
+            >
+              ⏹
+            </button>
+          </div>
+
+        ) : audioBlob ? (
+          /* 録音後プレビューUI */
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--surface)', borderRadius: 24 }}>
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <audio controls src={audioPreviewUrl!} style={{ flex: 1, height: 32, minWidth: 0 }} />
+            <button
+              onClick={cancelRecording}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 18, flexShrink: 0 }}
+              title="削除"
+            >
+              🗑
+            </button>
+            <button
+              onClick={sendVoiceMessage}
               style={{
+                width: 36, height: 36, borderRadius: '50%', border: 'none', cursor: 'pointer', flexShrink: 0,
                 background: !myBubbleColor || myBubbleColor === 'rainbow'
                   ? 'linear-gradient(135deg, #FF6B6B, #FF8E53, #FFD93D, #6BCB77, #4D96FF, #9B59B6)'
                   : myBubbleColor,
-                borderRadius: '50%',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
                 boxShadow: '0 2px 12px rgba(150,100,255,0.4)',
               }}
             >
-              <svg viewBox="0 0 24 24" fill="#0d0d1a" className="w-4 h-4">
+              <svg viewBox="0 0 24 24" fill="#0d0d1a" style={{ width: 16, height: 16 }}>
                 <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
               </svg>
             </button>
-          ) : (
-            /* マイク・写真 */
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              {/* マイク */}
-              <button
-                className="w-8 h-8 rounded-full flex items-center justify-center active:scale-90 transition-transform"
-                style={{ background: 'var(--surface)', border: '1px solid var(--surface-2)' }}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
-                  className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.55)' }}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round"
-                    d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"
-                  />
-                </svg>
-              </button>
-              {/* 写真 */}
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="w-8 h-8 rounded-full flex items-center justify-center active:scale-90 transition-transform"
-                style={{ background: 'var(--surface)', border: '1px solid var(--surface-2)' }}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
-                  className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.55)' }}
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round"
-                    d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"
-                  />
-                </svg>
-              </button>
-            </div>
-          )}
+          </div>
 
-        </div>
+        ) : (
+          /* 通常入力UI */
+          <div className="flex items-center gap-2">
+
+            {/* カメラボタン（常時表示） */}
+            <button
+              onClick={() => cameraInputRef.current?.click()}
+              className="w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center active:scale-90 transition-transform"
+              style={{ background: 'var(--surface)', border: '1px solid var(--surface-2)' }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
+                className="w-[18px] h-[18px]" style={{ color: 'rgba(255,255,255,0.6)' }}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round"
+                  d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z"
+                />
+                <path strokeLinecap="round" strokeLinejoin="round"
+                  d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z"
+                />
+              </svg>
+            </button>
+
+            {/* テキスト入力 */}
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  sendMessage();
+                }
+              }}
+              placeholder="Message…"
+              className="flex-1 rounded-2xl px-4 py-2.5 text-sm outline-none transition-colors"
+              style={{ background: 'var(--surface)', border: '1px solid var(--surface-2)', color: 'var(--foreground)' }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = 'rgba(255,26,26,0.4)'; }}
+              onBlur={(e)  => { e.currentTarget.style.borderColor = 'var(--surface-2)'; }}
+            />
+
+            {/* 右側ボタン群: 入力中→送信 / 未入力→マイク・写真 */}
+            {input.trim() ? (
+              <button
+                onClick={sendMessage}
+                className="w-9 h-9 flex-shrink-0 flex items-center justify-center active:scale-90 transition-all"
+                style={{
+                  background: !myBubbleColor || myBubbleColor === 'rainbow'
+                    ? 'linear-gradient(135deg, #FF6B6B, #FF8E53, #FFD93D, #6BCB77, #4D96FF, #9B59B6)'
+                    : myBubbleColor,
+                  borderRadius: '50%',
+                  boxShadow: '0 2px 12px rgba(150,100,255,0.4)',
+                }}
+              >
+                <svg viewBox="0 0 24 24" fill="#0d0d1a" className="w-4 h-4">
+                  <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+                </svg>
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {/* マイク（録音開始） */}
+                <button
+                  onClick={startRecording}
+                  className="w-8 h-8 rounded-full flex items-center justify-center active:scale-90 transition-transform"
+                  style={{ background: 'var(--surface)', border: '1px solid var(--surface-2)' }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
+                    className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.55)' }}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round"
+                      d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"
+                    />
+                  </svg>
+                </button>
+                {/* 写真 */}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-8 h-8 rounded-full flex items-center justify-center active:scale-90 transition-transform"
+                  style={{ background: 'var(--surface)', border: '1px solid var(--surface-2)' }}
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
+                    className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.55)' }}
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round"
+                      d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"
+                    />
+                  </svg>
+                </button>
+              </div>
+            )}
+
+          </div>
+        )}
+
       </div>
 
       {/* ── チャット設定パネル（右スライドイン） ─────────────────── */}
@@ -794,6 +965,118 @@ export default function ChatDetailPage() {
         </div>
       )}
 
+    </div>
+  );
+}
+
+// ── 音声メッセージプレイヤー ──────────────────────────────────────
+
+function VoiceMessagePlayer({
+  url, duration, isMyMessage, bubbleColor, textColor,
+}: {
+  url: string;
+  duration: number;
+  isMyMessage: boolean;
+  bubbleColor: string;
+  textColor: string;
+}) {
+  const [playing, setPlaying] = useState(false);
+  const [current, setCurrent] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    const audio = new Audio(url);
+    audioRef.current = audio;
+
+    const onTimeUpdate = () => setCurrent(audio.currentTime);
+    const onEnded = () => { setPlaying(false); setCurrent(0); };
+    audio.addEventListener('timeupdate', onTimeUpdate);
+    audio.addEventListener('ended', onEnded);
+
+    return () => {
+      audio.pause();
+      audio.removeEventListener('timeupdate', onTimeUpdate);
+      audio.removeEventListener('ended', onEnded);
+    };
+  }, [url]);
+
+  const togglePlay = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (playing) { audio.pause(); setPlaying(false); }
+    else { audio.play(); setPlaying(true); }
+  };
+
+  const total = duration || audioRef.current?.duration || 0;
+  const progress = total > 0 ? Math.min(current / total, 1) : 0;
+
+  const trackAlpha = isMyMessage ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.15)';
+  const fillAlpha  = isMyMessage ? 'rgba(255,255,255,0.85)' : textColor;
+
+  const fmt = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        width: 210,
+        padding: '10px 12px',
+        background: bubbleColor,
+        borderRadius: isMyMessage ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+        boxSizing: 'border-box',
+      }}
+    >
+      {/* 再生/停止ボタン */}
+      <button
+        onClick={togglePlay}
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: '50%',
+          background: isMyMessage ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.12)',
+          border: 'none',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          color: textColor,
+          fontSize: 13,
+        }}
+      >
+        {playing ? '⏸' : '▶'}
+      </button>
+
+      {/* 進捗バー + 時間 */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div
+          style={{
+            height: 3,
+            borderRadius: 2,
+            background: trackAlpha,
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              height: '100%',
+              width: `${progress * 100}%`,
+              background: fillAlpha,
+              borderRadius: 2,
+              transition: 'width 0.1s linear',
+            }}
+          />
+        </div>
+        <span style={{ fontSize: 10, color: textColor, opacity: 0.75, letterSpacing: '0.02em' }}>
+          {playing ? fmt(current) : fmt(total)}
+        </span>
+      </div>
     </div>
   );
 }
