@@ -493,7 +493,6 @@ export default function SettingsPage() {
   const { signOut, followHashtag, unfollowHashtag, user } = useAuth();
 
   const handleLogout = async () => {
-    localStorage.setItem('sync_logged_out', 'true');
     await signOut();
     router.push('/auth');
   };

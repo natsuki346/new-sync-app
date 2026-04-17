@@ -1039,8 +1039,10 @@ export default function HomePage() {
 
   useEffect(() => {
     if (loading) return;
-    if (user && !profileLoading && (!hasProfile || !profile?.username)) { router.push('/auth/username'); }
-  }, [loading, user, hasProfile, profileLoading, router]);
+    if (profileLoading) return;
+    if (!user) { router.replace('/auth'); return; }
+    if (!hasProfile || !profile?.username) { router.replace('/auth/username'); return; }
+  }, [loading, profileLoading, user, hasProfile, profile, router]);
 
   // 未読通知バッジ数
   useEffect(() => {

@@ -62,12 +62,34 @@ export default function VerifyPage() {
     if (!phone) return;
     setLoading(true);
     setError('');
-    const { error } = await supabase.auth.verifyOtp({ phone, token: code, type: 'sms' });
+    const { data: { session }, error } = await supabase.auth.verifyOtp({ phone, token: code, type: 'sms' });
     setLoading(false);
     if (error) {
       setError(error.message);
       setDigits(Array(OTP_LEN).fill(''));
       setTimeout(() => inputRefs.current[0]?.focus(), 50);
+      return;
+    }
+
+    localStorage.removeItem('sync_logged_out');
+    sessionStorage.removeItem('sync_phone');
+
+    if (session?.user) {
+      try {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('username')
+          .eq('id', session.user.id)
+          .single();
+
+        if (profile?.username) {
+          window.location.href = '/home';
+        } else {
+          window.location.href = '/auth/username';
+        }
+      } catch {
+        window.location.href = '/auth/username';
+      }
     } else {
       window.location.href = '/auth/username';
     }

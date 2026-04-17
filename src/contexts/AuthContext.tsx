@@ -51,18 +51,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN') {
-        const loggedOut = localStorage.getItem('sync_logged_out');
-        if (loggedOut === 'true') return;
-        localStorage.removeItem('sync_logged_out');
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      } else {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
+      const loggedOut = localStorage.getItem('sync_logged_out');
+
+      if (loggedOut === 'true') {
+        if (event === 'SIGNED_OUT') {
+          setSession(null);
+          setUser(null);
+          setLoading(false);
+        }
+        // SIGNED_IN / TOKEN_REFRESHED / INITIAL_SESSION などは全て無視
+        return;
       }
+
+      if (event === 'SIGNED_IN') {
+        localStorage.removeItem('sync_logged_out');
+      }
+
+      setSession(session);
+      setUser(session?.user ?? null);
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
@@ -148,10 +155,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    localStorage.setItem('sync_logged_out', 'true');
+    setUser(null);
+    setSession(null);
     setProfile(null);
     setHasProfile(false);
     setFollowedHashtags([]);
+    await supabase.auth.signOut();
   };
 
   const followHashtag = async (tag: string) => {
