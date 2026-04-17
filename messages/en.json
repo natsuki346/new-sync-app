@@ -240,6 +240,26 @@
   },
   "search": {
     "lockToast": "Post 3 times or react 10 times to unlock",
-    "commentUnlocked": "✓ Comments unlocked"
+    "commentUnlocked": "✓ Comments unlocked",
+    "searchPlaceholder": "Search hashtags",
+    "tabAll": "All",
+    "followerSuffix": " followers",
+    "showMore": "Show more",
+    "showLess": "Show less",
+    "noTags": "No tags in this genre yet",
+    "genres": {
+      "音楽": "Music",
+      "スポーツ": "Sports",
+      "アニメ": "Anime",
+      "マンガ": "Manga",
+      "ゲーム": "Game",
+      "グルメ": "Food",
+      "ファッション": "Fashion",
+      "映画": "Movie",
+      "ドラマ": "Drama",
+      "テクノロジー": "Tech",
+      "アウトドア": "Outdoor",
+      "勉強・資格": "Study"
+    }
   }
 }
