@@ -77,7 +77,9 @@
       "Bash(C:/Users/81908/sync-v5/node_modules/.bin/tsc --noEmit)",
       "Bash(node_modules/.bin/tsc --noEmit)",
       "Bash(node_modules/.bin/tsc --noEmit --skipLibCheck)",
-      "Bash(node_modules/.bin/next build:*)"
+      "Bash(node_modules/.bin/next build:*)",
+      "Bash(git pull *)",
+      "Bash(npx --yes next info)"
     ]
   }
 }

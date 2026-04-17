@@ -999,18 +999,7 @@ export default function SettingsPage() {
           />
         </div>
 
-        {/* ⑤ 支払い */}
-        <SectionHeader icon="💳" title={t('paymentSection')} />
-        <div style={cardStyle}>
-          <SettingRow
-            icon="💳" label={t('paymentMethod')}
-            value={t('paymentValue')}
-            onTap={() => router.push('/payment')}
-            borderBottom={false}
-          />
-        </div>
-
-        {/* ⑤.5 興味のあるジャンル */}
+        {/* ⑤ 興味のあるジャンル */}
         <SectionHeader icon="🎯" title="興味のあるジャンル" />
         <p style={{ fontSize: 12, color: 'var(--muted)', padding: '0 4px 10px', lineHeight: 1.5 }}>
           タイムラインに表示されるコンテンツをカスタマイズできます
