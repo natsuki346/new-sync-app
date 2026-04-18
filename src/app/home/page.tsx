@@ -1530,7 +1530,9 @@ export default function HomePage() {
               onChange={setTimelineFilter}
             />
             <div key={`tl-${timelineFilter.join(',')}`} className="feed-animate">
-              {timelinePosts.length > 0 ? (
+              {followedHashtags.length === 0 ? (
+                <NoHashtagsState onSetup={() => router.push('/onboarding?resume=true')} />
+              ) : timelinePosts.length > 0 ? (
                 timelinePosts.map((post) => (
                   <PostCard
                     key={post.id}
@@ -1586,6 +1588,38 @@ function EmptyState({ message }: { message: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-16">
       <p className="text-sm" style={{ color: 'var(--muted)' }}>{message}</p>
+    </div>
+  );
+}
+
+function NoHashtagsState({ onSetup }: { onSetup: () => void }) {
+  const RAINBOW = 'linear-gradient(to right, #7C6FE8, #D455A8, #E84040, #E8A020, #48C468, #2890D8)';
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-8 gap-4">
+      <div style={{ fontSize: 48 }}>🏷️</div>
+      <p style={{ color: 'var(--foreground)', fontSize: 16, fontWeight: 700, textAlign: 'center', margin: 0 }}>
+        まだハッシュタグを選んでいません
+      </p>
+      <p style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', margin: 0, lineHeight: 1.7 }}>
+        ハッシュタグはあなたのアイデンティティ。<br />
+        興味のあるタグを選ぶと、仲間が見えてきます。
+      </p>
+      <button
+        onClick={onSetup}
+        style={{
+          marginTop: 8,
+          padding: '12px 28px',
+          borderRadius: 14,
+          border: 'none',
+          background: RAINBOW,
+          color: '#fff',
+          fontSize: 14,
+          fontWeight: 700,
+          cursor: 'pointer',
+        }}
+      >
+        ハッシュタグを選ぶ
+      </button>
     </div>
   );
 }

@@ -497,6 +497,31 @@ export default function SettingsPage() {
     router.push('/auth');
   };
 
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+    setIsDeleting(true);
+    try {
+      const { error } = await supabase.rpc('delete_user_account');
+      if (error) {
+        console.error('Delete account error:', error);
+        alert('アカウントの削除に失敗しました。もう一度お試しください。');
+        setIsDeleting(false);
+        return;
+      }
+      localStorage.clear();
+      sessionStorage.clear();
+      await supabase.auth.signOut();
+      window.location.href = '/auth';
+    } catch (err) {
+      console.error('Unexpected error:', err);
+      alert('エラーが発生しました。');
+      setIsDeleting(false);
+    }
+  };
+
   // テーマ検出
   const [isDark, setIsDark] = useState(true);
 
@@ -1206,6 +1231,7 @@ export default function SettingsPage() {
               padding: '13px 16px',
               background: 'var(--surface)', cursor: 'pointer',
             }}
+            onClick={() => setShowDeleteDialog(true)}
           >
             <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,68,58,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>🗑</div>
             <p style={{ fontSize: 13, fontWeight: 600, color: '#FF453A' }}>{t('deleteAccount')}</p>
@@ -1217,6 +1243,80 @@ export default function SettingsPage() {
         </p>
 
       </div>
+
+      {/* アカウント削除確認ダイアログ */}
+      {showDeleteDialog && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 200,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '24px',
+          }}
+          onClick={() => { if (!isDeleting) setShowDeleteDialog(false); }}
+        >
+          <div
+            style={{
+              background: '#1a1a2e',
+              borderRadius: 20,
+              padding: '28px 24px',
+              width: '100%',
+              maxWidth: 340,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+              boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ textAlign: 'center', fontSize: 36 }}>🗑</div>
+            <h2 style={{ color: '#fff', fontSize: 17, fontWeight: 700, textAlign: 'center', margin: 0 }}>
+              {t('deleteAccountConfirmTitle')}
+            </h2>
+            <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, textAlign: 'center', margin: 0, lineHeight: 1.6 }}>
+              {t('deleteAccountConfirmMessage')}
+            </p>
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button
+                onClick={() => setShowDeleteDialog(false)}
+                disabled={isDeleting}
+                style={{
+                  flex: 1,
+                  padding: '13px 0',
+                  borderRadius: 12,
+                  border: 'none',
+                  background: 'rgba(255,255,255,0.1)',
+                  color: 'rgba(255,255,255,0.7)',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: isDeleting ? 'not-allowed' : 'pointer',
+                  opacity: isDeleting ? 0.5 : 1,
+                }}
+              >
+                {t('deleteAccountCancel')}
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={isDeleting}
+                style={{
+                  flex: 1,
+                  padding: '13px 0',
+                  borderRadius: 12,
+                  border: 'none',
+                  background: isDeleting ? 'rgba(255,68,58,0.4)' : '#FF453A',
+                  color: '#fff',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: isDeleting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {isDeleting ? t('deleteAccountDeleting') : t('deleteAccountConfirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -11,46 +11,49 @@ export interface Database {
     Tables: {
       profiles: {
         Row: {
-          id:           string
-          username:     string
-          display_name: string
-          avatar_url:   string | null
-          header_url:   string | null
-          bio:          string | null
-          hashtags:     string[]
-          bluetooth_id: string | null
-          last_seen_at: string | null
-          created_at:   string
-          lat:          number | null
-          lng:          number | null
+          id:                    string
+          username:              string
+          display_name:          string
+          avatar_url:            string | null
+          header_url:            string | null
+          bio:                   string | null
+          hashtags:              string[]
+          bluetooth_id:          string | null
+          last_seen_at:          string | null
+          created_at:            string
+          lat:                   number | null
+          lng:                   number | null
+          onboarding_completed:  boolean
         }
         Insert: {
-          id:           string
-          username:     string
-          display_name: string
-          avatar_url?:  string | null
-          header_url?:  string | null
-          bio?:         string | null
-          hashtags?:    string[]
-          bluetooth_id?: string | null
-          last_seen_at?: string | null
-          created_at?:  string
-          lat?:         number | null
-          lng?:         number | null
+          id:                    string
+          username:              string
+          display_name:          string
+          avatar_url?:           string | null
+          header_url?:           string | null
+          bio?:                  string | null
+          hashtags?:             string[]
+          bluetooth_id?:         string | null
+          last_seen_at?:         string | null
+          created_at?:           string
+          lat?:                  number | null
+          lng?:                  number | null
+          onboarding_completed?: boolean
         }
         Update: {
-          id?:          string
-          username?:    string
-          display_name?: string
-          avatar_url?:  string | null
-          header_url?:  string | null
-          bio?:         string | null
-          hashtags?:    string[]
-          bluetooth_id?: string | null
-          last_seen_at?: string | null
-          created_at?:  string
-          lat?:         number | null
-          lng?:         number | null
+          id?:                   string
+          username?:             string
+          display_name?:         string
+          avatar_url?:           string | null
+          header_url?:           string | null
+          bio?:                  string | null
+          hashtags?:             string[]
+          bluetooth_id?:         string | null
+          last_seen_at?:         string | null
+          created_at?:           string
+          lat?:                  number | null
+          lng?:                  number | null
+          onboarding_completed?: boolean
         }
       }
 

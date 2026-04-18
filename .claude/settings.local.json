@@ -79,7 +79,9 @@
       "Bash(node_modules/.bin/tsc --noEmit --skipLibCheck)",
       "Bash(node_modules/.bin/next build:*)",
       "Bash(git pull *)",
-      "Bash(npx --yes next info)"
+      "Bash(npx --yes next info)",
+      "Bash(pkill -f \"next dev\")",
+      "Bash(taskkill /F /IM node.exe /T)"
     ]
   }
 }

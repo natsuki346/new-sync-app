@@ -23,26 +23,42 @@ export async function proxy(request: NextRequest) {
   );
 
   const { data: { user } } = await supabase.auth.getUser();
+  const { pathname, searchParams } = request.nextUrl;
 
   const protectedPaths = [
     '/home', '/profile', '/bubble', '/search',
     '/chat', '/notifications', '/settings',
-    '/liked', '/saved', '/qrcode',
+    '/liked', '/saved', '/qrcode', '/onboarding',
   ];
-  const isProtected = protectedPaths.some(path =>
-    request.nextUrl.pathname.startsWith(path)
-  );
+  const isProtected = protectedPaths.some(path => pathname.startsWith(path));
 
+  // 未認証 → /auth
   if (!user && isProtected) {
     const url = request.nextUrl.clone();
     url.pathname = '/auth';
     return NextResponse.redirect(url);
   }
 
-  if (user && request.nextUrl.pathname === '/auth') {
+  // 認証済みで /auth → /home
+  if (user && pathname === '/auth') {
     const url = request.nextUrl.clone();
     url.pathname = '/home';
     return NextResponse.redirect(url);
+  }
+
+  // /onboarding: ?resume=true ならスキップ、それ以外は完了チェック
+  if (user && pathname === '/onboarding' && searchParams.get('resume') !== 'true') {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('onboarding_completed')
+      .eq('id', user.id)
+      .single();
+
+    if ((profile as { onboarding_completed?: boolean } | null)?.onboarding_completed === true) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/home';
+      return NextResponse.redirect(url);
+    }
   }
 
   return supabaseResponse;

@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import SyncLogo from '@/components/SyncLogo';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { GENRES, GENRE_HASHTAGS } from '@/lib/genreHashtags';
 
 const RAINBOW = 'linear-gradient(to right, #7C6FE8, #D455A8, #E84040, #E8A020, #48C468, #2890D8)';
@@ -25,7 +26,7 @@ const skipBtnStyle: React.CSSProperties = {
   marginTop: 16,
   background: 'none',
   border: 'none',
-  color: 'rgba(255,255,255,0.35)',
+  color: 'var(--text-tertiary)',
   fontSize: 13,
   cursor: 'pointer',
   textDecoration: 'underline',
@@ -35,19 +36,41 @@ const skipBtnStyle: React.CSSProperties = {
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const { followHashtag } = useAuth();
+  const { user, profile, loading: authLoading, followHashtag } = useAuth();
+
+  // ── 認証ガード ────────────────────────────────────────────────
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) { router.replace('/auth'); return; }
+    if (profile?.onboarding_completed === true) { router.replace('/home'); }
+  }, [authLoading, user, profile, router]);
 
   // STEP 1 state
-  const [step,         setStep]         = useState<1 | 2>(1);
+  const [step,           setStep]           = useState<1 | 2>(1);
   const [selectedGenres, setSelectedGenres] = useState<Set<string>>(new Set());
-  const [genreError,   setGenreError]   = useState('');
+  const [genreError,     setGenreError]     = useState('');
 
   // STEP 2 state
   const [followedTags, setFollowedTags] = useState<Set<string>>(new Set());
   const [tagSearch,    setTagSearch]    = useState('');
   const [loading,      setLoading]      = useState(false);
 
-  // ── STEP 1 ───────────────────────────────────────────────────────
+  // ── onboarding_completed を true に更新 ─────────────────────
+  const markCompleted = async () => {
+    if (!user) return;
+    await supabase
+      .from('profiles')
+      .update({ onboarding_completed: true } as any)
+      .eq('id', user.id);
+  };
+
+  // ── スキップ ─────────────────────────────────────────────────
+  const handleSkip = async () => {
+    await markCompleted();
+    router.push('/home');
+  };
+
+  // ── STEP 1 ───────────────────────────────────────────────────
 
   function toggleGenre(label: string) {
     setSelectedGenres(prev => {
@@ -63,21 +86,18 @@ export default function OnboardingPage() {
       setGenreError('最低1つ選んでください');
       return;
     }
-    // 選択ジャンルの全タグをデフォルトでフォロー済みにしてSTEP 2へ
     const defaultTags = [...selectedGenres].flatMap(g => GENRE_HASHTAGS[g] ?? []);
     setFollowedTags(new Set(defaultTags));
     setStep(2);
   }
 
-  // ── STEP 2 ───────────────────────────────────────────────────────
+  // ── STEP 2 ───────────────────────────────────────────────────
 
-  // 選択ジャンルの全タグ（重複除去）
   const allCandidateTags = useMemo(() => {
     const tags = [...selectedGenres].flatMap(g => GENRE_HASHTAGS[g] ?? []);
     return [...new Set(tags)];
   }, [selectedGenres]);
 
-  // 検索フィルター：部分一致、ヒットなしの場合は入力値をそのまま候補に
   const filteredTags = useMemo(() => {
     const q = tagSearch.trim();
     if (!q) return allCandidateTags;
@@ -101,6 +121,7 @@ export default function OnboardingPage() {
     setLoading(true);
     try {
       await Promise.all([...followedTags].map(tag => followHashtag(tag)));
+      await markCompleted();
     } catch (e) {
       console.error('ハッシュタグフォローエラー:', e);
     }
@@ -108,17 +129,24 @@ export default function OnboardingPage() {
     router.push('/home');
   }
 
-  // ── レンダリング ─────────────────────────────────────────────────
+  // ── ガード中のローディング表示 ────────────────────────────────
+  if (authLoading || !user) {
+    return (
+      <div style={{ ...containerStyle, alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>読み込み中...</div>
+      </div>
+    );
+  }
+
+  // ── STEP 2 ───────────────────────────────────────────────────
 
   if (step === 2) {
     return (
       <div style={containerStyle}>
-        {/* ロゴ */}
         <div style={{ marginBottom: 24 }}>
           <SyncLogo width={110} />
         </div>
 
-        {/* ステップインジケーター */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
           <div style={{ width: 24, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.2)' }} />
           <div style={{ width: 24, height: 4, borderRadius: 2, background: RAINBOW }} />
@@ -127,7 +155,7 @@ export default function OnboardingPage() {
         <h1 style={{ color: 'var(--text-primary)', fontSize: 20, fontWeight: 700, marginBottom: 6, textAlign: 'center' }}>
           ハッシュタグをフォローしよう
         </h1>
-        <p style={{ color: 'rgba(128,128,128,0.8)', fontSize: 13, marginBottom: 20, textAlign: 'center' }}>
+        <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 20, textAlign: 'center' }}>
           興味のあるタグをフォローして、タイムラインをカスタマイズしよう
         </p>
 
@@ -135,11 +163,11 @@ export default function OnboardingPage() {
         <div style={{
           width: '100%', maxWidth: 340, marginBottom: 16,
           display: 'flex', alignItems: 'center', gap: 8,
-          borderRadius: 12, border: '1px solid rgba(255,255,255,0.12)',
-          background: 'rgba(255,255,255,0.06)', padding: '8px 12px',
+          borderRadius: 12, border: '1px solid rgba(128,128,128,0.2)',
+          background: 'var(--surface)', padding: '8px 12px',
           boxSizing: 'border-box',
         }}>
-          <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 14 }}>🔍</span>
+          <span style={{ color: 'var(--text-tertiary)', fontSize: 14 }}>🔍</span>
           <input
             type="text"
             value={tagSearch}
@@ -153,7 +181,7 @@ export default function OnboardingPage() {
           {tagSearch && (
             <button
               onClick={() => setTagSearch('')}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', padding: 0, lineHeight: 1 }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: 0, lineHeight: 1 }}
             >✕</button>
           )}
         </div>
@@ -174,9 +202,9 @@ export default function OnboardingPage() {
                 style={{
                   padding: '6px 14px',
                   borderRadius: 20,
-                  border: isFollowed ? 'none' : '1px solid rgba(255,255,255,0.18)',
-                  background: isFollowed ? RAINBOW : 'rgba(255,255,255,0.08)',
-                  color: isFollowed ? '#0d0d1a' : 'rgba(255,255,255,0.8)',
+                  border: isFollowed ? 'none' : '1px solid rgba(128,128,128,0.25)',
+                  background: isFollowed ? RAINBOW : 'var(--surface)',
+                  color: isFollowed ? '#0d0d1a' : 'var(--text-secondary)',
                   fontSize: 13,
                   fontWeight: isFollowed ? 700 : 400,
                   cursor: 'pointer',
@@ -191,7 +219,7 @@ export default function OnboardingPage() {
         </div>
 
         {/* フォロー数 */}
-        <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, marginBottom: 16 }}>
+        <p style={{ color: 'var(--text-tertiary)', fontSize: 12, marginBottom: 16 }}>
           {followedTags.size > 0 ? `${followedTags.size}個フォロー中` : 'タグを選んでください'}
         </p>
 
@@ -204,7 +232,7 @@ export default function OnboardingPage() {
             width: '100%', maxWidth: 340,
             padding: '14px 0', borderRadius: 14, border: 'none',
             cursor: loading ? 'not-allowed' : 'pointer',
-            background: loading ? 'rgba(255,255,255,0.10)' : RAINBOW,
+            background: loading ? 'rgba(128,128,128,0.2)' : RAINBOW,
             color: '#fff', fontSize: 15, fontWeight: 700,
             opacity: loading ? 0.6 : 1, transition: 'opacity 0.15s',
           }}
@@ -212,36 +240,33 @@ export default function OnboardingPage() {
           {loading ? '保存中...' : '完了'}
         </button>
 
-        {/* スキップ */}
-        <button type="button" onClick={() => router.push('/home')} style={skipBtnStyle}>
+        <button type="button" onClick={handleSkip} style={skipBtnStyle}>
           スキップ
         </button>
       </div>
     );
   }
 
-  // ── STEP 1 ───────────────────────────────────────────────────────
+  // ── STEP 1 ───────────────────────────────────────────────────
 
   return (
     <div style={containerStyle}>
-      {/* ロゴ */}
       <div style={{ marginBottom: 24 }}>
         <SyncLogo width={110} />
       </div>
 
-      {/* ステップインジケーター */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
         <div style={{ width: 24, height: 4, borderRadius: 2, background: RAINBOW }} />
-        <div style={{ width: 24, height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.2)' }} />
+        <div style={{ width: 24, height: 4, borderRadius: 2, background: 'rgba(128,128,128,0.2)' }} />
       </div>
 
       <h1 style={{ color: 'var(--text-primary)', fontSize: 20, fontWeight: 700, marginBottom: 6, textAlign: 'center' }}>
         好きなジャンルを選ぼう
       </h1>
-      <p style={{ color: 'rgba(128,128,128,0.8)', fontSize: 13, marginBottom: 4, textAlign: 'center' }}>
+      <p style={{ color: 'var(--text-secondary)', fontSize: 13, marginBottom: 4, textAlign: 'center' }}>
         選んだジャンルのタイムラインが表示されます
       </p>
-      <p style={{ color: 'rgba(128,128,128,0.5)', fontSize: 11, marginBottom: 24, textAlign: 'center' }}>
+      <p style={{ color: 'var(--text-tertiary)', fontSize: 11, marginBottom: 24, textAlign: 'center' }}>
         あとで変更できます
       </p>
 
@@ -262,8 +287,8 @@ export default function OnboardingPage() {
                 display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center',
                 gap: 4, padding: '14px 8px', borderRadius: 14,
-                border: isSelected ? '1.5px solid transparent' : '1.5px solid rgba(255,255,255,0.12)',
-                background: isSelected ? 'rgba(124,111,232,0.18)' : 'rgba(255,255,255,0.05)',
+                border: isSelected ? '1.5px solid transparent' : '1.5px solid rgba(128,128,128,0.2)',
+                background: isSelected ? 'rgba(124,111,232,0.18)' : 'var(--surface)',
                 backgroundImage: isSelected ? RAINBOW : 'none',
                 backgroundClip: isSelected ? 'padding-box' : 'unset',
                 cursor: 'pointer', transition: 'all 0.15s',
@@ -272,7 +297,6 @@ export default function OnboardingPage() {
                 boxShadow: isSelected ? '0 0 12px rgba(124,111,232,0.35)' : 'none',
               }}
             >
-              {/* 選択時のレインボーボーダー */}
               {isSelected && (
                 <span style={{
                   position: 'absolute', inset: 0, borderRadius: 14, padding: 1.5,
@@ -286,13 +310,13 @@ export default function OnboardingPage() {
               <span style={{ fontSize: 26 }}>{emoji}</span>
               <span style={{
                 fontSize: 11, fontWeight: 600,
-                color: isSelected ? '#fff' : 'rgba(255,255,255,0.65)',
+                color: isSelected ? 'var(--text-primary)' : 'var(--text-secondary)',
                 lineHeight: 1.3, textAlign: 'center',
               }}>
                 {label}
               </span>
               {isSelected && (
-                <div style={{ fontSize: 9, opacity: 0.7, marginTop: 4, lineHeight: 1.4, color: '#fff', textAlign: 'center' }}>
+                <div style={{ fontSize: 9, opacity: 0.7, marginTop: 4, lineHeight: 1.4, color: 'var(--text-primary)', textAlign: 'center' }}>
                   {GENRE_HASHTAGS[label]?.slice(0, 3).join(' ')}
                 </div>
               )}
@@ -302,11 +326,10 @@ export default function OnboardingPage() {
       </div>
 
       {/* 選択数 */}
-      <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12, marginBottom: 4 }}>
+      <p style={{ color: 'var(--text-tertiary)', fontSize: 12, marginBottom: 4 }}>
         {selectedGenres.size > 0 ? `${selectedGenres.size}個選択中` : '選択してください'}
       </p>
 
-      {/* エラー */}
       {genreError && (
         <p style={{ color: '#E84040', fontSize: 13, marginBottom: 8 }}>
           {genreError}
@@ -322,7 +345,7 @@ export default function OnboardingPage() {
           width: '100%', maxWidth: 340,
           padding: '14px 0', borderRadius: 14, border: 'none',
           cursor: selectedGenres.size === 0 ? 'not-allowed' : 'pointer',
-          background: selectedGenres.size === 0 ? 'rgba(255,255,255,0.10)' : RAINBOW,
+          background: selectedGenres.size === 0 ? 'rgba(128,128,128,0.2)' : RAINBOW,
           color: '#fff', fontSize: 15, fontWeight: 700,
           opacity: selectedGenres.size === 0 ? 0.6 : 1, transition: 'opacity 0.15s',
         }}
@@ -330,8 +353,7 @@ export default function OnboardingPage() {
         次へ
       </button>
 
-      {/* スキップ */}
-      <button type="button" onClick={() => router.push('/home')} style={skipBtnStyle}>
+      <button type="button" onClick={handleSkip} style={skipBtnStyle}>
         スキップ
       </button>
     </div>

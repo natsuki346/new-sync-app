@@ -28,6 +28,8 @@
   --text-secondary: #aaaaaa;
   --border-color: #333333;
 
+  --text-tertiary: rgba(255,255,255,0.4);
+
   --brand: #7C6FE8;
   --background: #111111;
   --foreground: #ffffff;
@@ -55,6 +57,8 @@
     --text-primary:   #000000;
     --text-secondary: #555555;
     --border-color:   #dddddd;
+
+    --text-tertiary: rgba(0,0,0,0.4);
 
     --background:     #ffffff;
     --foreground:     #000000;
