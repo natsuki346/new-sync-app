@@ -8,7 +8,21 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 
 const RAINBOW = 'linear-gradient(to right, #7C6FE8, #D455A8, #E84040, #E8A020, #48C468, #2890D8)';
-const USERNAME_RE = /^[a-zA-Z0-9_]{3,20}$/;
+
+type UsernameValidation = {
+  valid: boolean;
+  errorKey?: 'tooShort' | 'tooLong' | 'invalidChars' | 'leadingDot' | 'trailingDot' | 'consecutiveDots';
+};
+
+function validateUsername(username: string): UsernameValidation {
+  if (username.length < 3)        return { valid: false, errorKey: 'tooShort' };
+  if (username.length > 20)       return { valid: false, errorKey: 'tooLong' };
+  if (!/^[a-z0-9_.]+$/.test(username)) return { valid: false, errorKey: 'invalidChars' };
+  if (username.startsWith('.'))   return { valid: false, errorKey: 'leadingDot' };
+  if (username.endsWith('.'))     return { valid: false, errorKey: 'trailingDot' };
+  if (username.includes('..'))    return { valid: false, errorKey: 'consecutiveDots' };
+  return { valid: true };
+}
 
 export default function UsernamePage() {
   const t = useTranslations('username');
@@ -28,11 +42,13 @@ export default function UsernamePage() {
   const [checking,  setChecking]  = useState(false);
   const [available, setAvailable] = useState<boolean | null>(null);
 
-  // リアルタイムバリデーション
+  // リアルタイムバリデーション + 重複チェック
   useEffect(() => {
     setAvailable(null);
     if (!username) return;
-    if (!USERNAME_RE.test(username)) return;
+
+    const validation = validateUsername(username);
+    if (!validation.valid) return; // フォーマット違反は Supabase に問い合わせない
 
     const timer = setTimeout(async () => {
       setChecking(true);
@@ -50,20 +66,20 @@ export default function UsernamePage() {
 
   function getValidationMessage(): { text: string; color: string } | null {
     if (!username) return null;
-    if (username.length < 3) return { text: t('tooShort'), color: '#E84040' };
-    if (username.length > 20) return { text: t('tooLong'), color: '#E84040' };
-    if (!/^[a-zA-Z0-9_]+$/.test(username)) return { text: t('invalidChars'), color: '#E84040' };
+    const { valid, errorKey } = validateUsername(username);
+    if (!valid && errorKey) return { text: t(errorKey), color: '#E84040' };
     if (checking) return { text: t('checking'), color: 'rgba(128,128,128,0.6)' };
-    if (available === true) return { text: t('available'), color: '#48C468' };
-    if (available === false) return { text: t('taken'), color: '#E84040' };
+    if (available === true)  return { text: t('available'), color: '#48C468' };
+    if (available === false) return { text: t('taken'),     color: '#E84040' };
     return null;
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!canSubmit || username.trim().length < 3) return;
-    if (!USERNAME_RE.test(username)) {
-      setError(t('invalidChars'));
+
+    const { valid, errorKey } = validateUsername(username);
+    if (!valid) {
+      setError(errorKey ? t(errorKey) : t('invalidChars'));
       return;
     }
     if (!available) {
@@ -80,10 +96,11 @@ export default function UsernamePage() {
       return;
     }
 
+    const normalized = username.toLowerCase();
     const { error: insertError } = await (supabase as any).from('profiles').upsert({
       id: user.id,
-      username,
-      display_name: username,
+      username: normalized,
+      display_name: normalized,
     });
 
     setLoading(false);
@@ -98,7 +115,7 @@ export default function UsernamePage() {
   }
 
   const validation = getValidationMessage();
-  const canSubmit = USERNAME_RE.test(username) && available === true && !loading && !checking;
+  const canSubmit = validateUsername(username).valid && available === true && !loading && !checking;
 
   return (
     <div style={{
@@ -144,7 +161,10 @@ export default function UsernamePage() {
             placeholder={t('placeholder')}
             value={username}
             onChange={(e) => {
-              setUsername(e.target.value);
+              const normalized = e.target.value
+                .toLowerCase()
+                .replace(/[^a-z0-9_.]/g, '');
+              setUsername(normalized);
               setError('');
             }}
             autoComplete="username"
@@ -177,7 +197,7 @@ export default function UsernamePage() {
 
         <button
           type="submit"
-          disabled={!canSubmit || username.trim().length < 3}
+          disabled={!canSubmit}
           style={{
             marginTop: 8,
             padding: '14px 0',

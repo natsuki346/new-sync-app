@@ -492,6 +492,8 @@ export default function SettingsPage() {
   const router = useRouter();
   const { signOut, followHashtag, unfollowHashtag, user } = useAuth();
 
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+
   const handleLogout = async () => {
     await signOut();
     router.push('/auth');
@@ -1220,7 +1222,7 @@ export default function SettingsPage() {
               borderBottom: '1px solid var(--surface-2)',
               background: 'var(--surface)', cursor: 'pointer',
             }}
-            onClick={handleLogout}
+            onClick={() => setShowLogoutDialog(true)}
           >
             <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,68,58,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>🚪</div>
             <p style={{ fontSize: 13, fontWeight: 600, color: '#FF453A' }}>{t('logout')}</p>
@@ -1243,6 +1245,76 @@ export default function SettingsPage() {
         </p>
 
       </div>
+
+      {/* ログアウト確認ダイアログ */}
+      {showLogoutDialog && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 200,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '24px',
+          }}
+          onClick={() => setShowLogoutDialog(false)}
+        >
+          <div
+            style={{
+              background: '#1a1a2e',
+              borderRadius: 20,
+              padding: '28px 24px',
+              width: '100%',
+              maxWidth: 340,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+              boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ textAlign: 'center', fontSize: 36 }}>🚪</div>
+            <h2 style={{ color: '#fff', fontSize: 17, fontWeight: 700, textAlign: 'center', margin: 0 }}>
+              {t('logoutConfirmTitle')}
+            </h2>
+            <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, textAlign: 'center', margin: 0, lineHeight: 1.6 }}>
+              {t('logoutConfirmMessage')}
+            </p>
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button
+                onClick={() => setShowLogoutDialog(false)}
+                style={{
+                  flex: 1,
+                  padding: '13px 0',
+                  borderRadius: 12,
+                  border: 'none',
+                  background: 'rgba(255,255,255,0.1)',
+                  color: 'rgba(255,255,255,0.7)',
+                  fontSize: 14,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                {t('deleteAccountCancel')}
+              </button>
+              <button
+                onClick={handleLogout}
+                style={{
+                  flex: 1,
+                  padding: '13px 0',
+                  borderRadius: 12,
+                  border: 'none',
+                  background: '#FF453A',
+                  color: '#fff',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                {t('logoutConfirmButton')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* アカウント削除確認ダイアログ */}
       {showDeleteDialog && (
