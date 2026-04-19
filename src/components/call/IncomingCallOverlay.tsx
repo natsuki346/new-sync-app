@@ -21,11 +21,17 @@ export default function IncomingCallOverlay() {
   } = useCall();
 
   const [mounted,       setMounted]       = useState(false);
+  const [portalTarget,  setPortalTarget]  = useState<Element | null>(null);
   const [callerProfile, setCallerProfile] = useState<Profile | null>(null);
   const [participants,  setParticipants]  = useState<Profile[]>([]);
+  const [imgError,      setImgError]      = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    setMounted(true);
+    setPortalTarget(document.getElementById('app-root') ?? document.body);
+  }, []);
+  useEffect(() => { setImgError(false); }, [callerProfile?.id]);
 
   // 発信者プロフィール + 参加者一覧を取得
   useEffect(() => {
@@ -89,7 +95,7 @@ export default function IncomingCallOverlay() {
     };
   }, [incomingCall?.id]);
 
-  if (!mounted || !incomingCall) return null;
+  if (!mounted || !portalTarget || !incomingCall) return null;
 
   const isGroup    = participants.length > 2;
   const isBusy     = isAcceptingCall || isRejectingCall;
@@ -112,15 +118,16 @@ export default function IncomingCallOverlay() {
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <div className="w-[90%] max-w-sm rounded-2xl bg-zinc-900 shadow-2xl p-6 flex flex-col items-center">
 
         {/* Avatar */}
         <div className="relative mb-4">
-          {callerProfile?.avatar_url ? (
+          {callerProfile?.avatar_url && !imgError ? (
             <img
               src={callerProfile.avatar_url}
               alt={callerProfile.display_name ?? ''}
+              onError={() => setImgError(true)}
               className="w-24 h-24 rounded-full object-cover ring-4 ring-zinc-800"
             />
           ) : (
@@ -173,6 +180,6 @@ export default function IncomingCallOverlay() {
 
       </div>
     </div>,
-    document.body
+    portalTarget
   );
 }

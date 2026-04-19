@@ -79,11 +79,35 @@ interface CallContextType {
   /** 切断処理中フラグ（多重押し防止） */
   isEndingCall: boolean;
 
+  /** 発信をキャンセルする（ringing 中の発信者専用） */
+  cancelOutgoingCall: () => Promise<void>;
+
+  /** キャンセル処理中フラグ（多重押し防止） */
+  isCancellingCall: boolean;
+
   /** マイクミュート状態 */
   isMuted: boolean;
 
   /** マイクミュートをトグルする */
   toggleMute: () => Promise<void>;
+
+  /** カメラOFF状態 */
+  isCameraOff: boolean;
+
+  /** カメラON/OFF切替 */
+  toggleCameraOff: () => Promise<void>;
+
+  /** 自分のビデオ描画先 ref */
+  localVideoContainerRef: React.MutableRefObject<HTMLDivElement | null>;
+
+  /** 相手のビデオ描画先 ref */
+  remoteVideoContainerRef: React.MutableRefObject<HTMLDivElement | null>;
+
+  /** ローカルカメラを publishVideo する */
+  startLocalVideo: () => Promise<void>;
+
+  /** ローカルカメラを unpublishVideo する */
+  stopLocalVideo: () => Promise<void>;
 
   /**
    * 着信情報をクリアする（DB を触らずUIだけ閉じる。タイムアウト等で使う）
@@ -154,8 +178,13 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const [isStartingCall, setIsStartingCall] = useState(false);
   const [isAcceptingCall, setIsAcceptingCall] = useState(false);
   const [isRejectingCall, setIsRejectingCall] = useState(false);
-  const [isEndingCall,    setIsEndingCall]    = useState(false);
-  const [isMuted,         setIsMuted]         = useState(false);
+  const [isEndingCall,      setIsEndingCall]      = useState(false);
+  const [isCancellingCall,  setIsCancellingCall]  = useState(false);
+  const [isMuted,           setIsMuted]           = useState(false);
+  const [isCameraOff,       setIsCameraOff]       = useState(false);
+
+  const localVideoContainerRef  = useRef<HTMLDivElement | null>(null);
+  const remoteVideoContainerRef = useRef<HTMLDivElement | null>(null);
 
   // 自分が発信した call の id をローカルに覚えておき、
   // Realtime で自分の call_participants INSERT が飛んできたときに
@@ -339,22 +368,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         // 映像通話ならこの後 publishVideo も呼ぶが、
         // container 要素が必要なので通話中UI（フェーズE）で実装する
 
-        // ---- 5. messages に call_started システムメッセージを投稿 ----
-        const { error: msgErr } = await (
-          supabase.from('messages') as any
-        ).insert({
-          conversation_id: params.conversationId,
-          user_id: user.id,
-          message_type: 'call_started',
-          call_id: insertedCallId,
-        });
-
-        if (msgErr) {
-          // システムメッセージ投稿失敗は通話自体を止めるほどではないので warn のみ
-          console.warn('[CallContext] call_started message insert failed:', msgErr);
-        }
-
-        // ---- 6. state 確定 ----
+        // ---- 5. state 確定 ----
         setCurrentCall(callRow as Call);
         setCallClient(client);
 
@@ -375,7 +389,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         // calls が INSERT 済みなら ended にマーク
         if (insertedCallId) {
           await (supabase.from('calls') as any)
-            .update({ status: 'ended', ended_at: new Date().toISOString() })
+            .update({ status: 'failed', ended_at: new Date().toISOString() })
             .eq('id', insertedCallId);
 
           // マーキング解除
@@ -538,13 +552,106 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       if (callErr) {
         console.error('[CallContext] endCall calls update failed:', callErr);
       }
+
+      // ---- 3. messages に call_ended システムメッセージを投稿 ----
+      if (!callErr) {
+        const { data: updatedCall } = await (supabase.from('calls') as any)
+          .select('status, conversation_id')
+          .eq('id', target.id)
+          .maybeSingle();
+
+        if (updatedCall?.status === 'ended') {
+          const { error: msgErr } = await (supabase.from('messages') as any).insert({
+            conversation_id: updatedCall.conversation_id,
+            user_id: user.id,
+            message_type: 'call_ended',
+            call_id: target.id,
+          });
+          if (msgErr) {
+            console.warn('[CallContext] call_ended message insert failed:', msgErr);
+          }
+        }
+      }
     } finally {
-      // ---- 3. state cleanup（DB 失敗時も必ず実行） ----
+      // ---- 4. state cleanup（DB 失敗時も必ず実行） ----
       setCurrentCall(null);
       setCallClient(null);
       setIsMuted(false);
+      setIsCameraOff(false);
       selfInitiatedCallIdsRef.current.delete(target.id);
       setIsEndingCall(false);
+    }
+  }, [currentCall, callClient, user?.id]);
+
+  // =====================================================
+  // 発信キャンセル（ringing 中の発信者専用）
+  // =====================================================
+  const cancelOutgoingCall = useCallback(async () => {
+    if (!currentCall) return;
+    if (!user?.id) throw new Error('Not authenticated');
+    if (currentCall.status !== 'ringing') return;
+    if (currentCall.initiated_by !== user.id) return;
+
+    setIsCancellingCall(true);
+
+    const target     = currentCall;
+    const clientSnap = callClient;
+
+    try {
+      // ---- 1. Agora leave ----
+      if (clientSnap) {
+        await clientSnap.leave().catch((err) => {
+          console.error('[CallContext] cancelOutgoingCall leave failed:', err);
+        });
+      }
+
+      // ---- 2. calls: ended にマーク（ringing のときのみ） ----
+      const { error: callErr } = await (supabase.from('calls') as any)
+        .update({ status: 'ended', ended_at: new Date().toISOString() })
+        .eq('id', target.id)
+        .eq('status', 'ringing');
+
+      if (callErr) {
+        console.error('[CallContext] cancelOutgoingCall calls update failed:', callErr);
+      }
+
+      // ---- 3. 未応答の相手を missed に UPDATE ----
+      const { error: invitedErr } = await (supabase.from('call_participants') as any)
+        .update({ status: 'missed' })
+        .eq('call_id', target.id)
+        .eq('status', 'invited');
+
+      if (invitedErr) {
+        console.error('[CallContext] cancelOutgoingCall invited update failed:', invitedErr);
+      }
+
+      // ---- 4. 自分を left に UPDATE ----
+      const { error: selfErr } = await (supabase.from('call_participants') as any)
+        .update({ status: 'left', left_at: new Date().toISOString() })
+        .eq('call_id', target.id)
+        .eq('user_id', user.id);
+
+      if (selfErr) {
+        console.error('[CallContext] cancelOutgoingCall self update failed:', selfErr);
+      }
+
+      // ---- 5. messages に call_cancelled システムメッセージを投稿 ----
+      const { error: msgErr } = await (supabase.from('messages') as any).insert({
+        conversation_id: target.conversation_id,
+        user_id: user.id,
+        message_type: 'call_cancelled',
+        call_id: target.id,
+      });
+      if (msgErr) {
+        console.warn('[CallContext] call_cancelled message insert failed:', msgErr);
+      }
+    } finally {
+      setCurrentCall(null);
+      setCallClient(null);
+      setIsMuted(false);
+      setIsCameraOff(false);
+      selfInitiatedCallIdsRef.current.delete(target.id);
+      setIsCancellingCall(false);
     }
   }, [currentCall, callClient, user?.id]);
 
@@ -561,6 +668,55 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       throw err;
     }
   }, [callClient, isMuted]);
+
+  // =====================================================
+  // ビデオ：ローカルカメラ開始
+  // =====================================================
+  const startLocalVideo = useCallback(async () => {
+    if (!callClient) {
+      console.warn('[CallContext] startLocalVideo: no callClient');
+      return;
+    }
+    const container = localVideoContainerRef.current;
+    if (!container) {
+      console.warn('[CallContext] startLocalVideo: no container');
+      return;
+    }
+    try {
+      await callClient.publishVideo(container);
+      setIsCameraOff(false);
+    } catch (err) {
+      console.error('[CallContext] startLocalVideo failed:', err);
+      throw err;
+    }
+  }, [callClient]);
+
+  // =====================================================
+  // ビデオ：ローカルカメラ停止
+  // =====================================================
+  const stopLocalVideo = useCallback(async () => {
+    if (!callClient) return;
+    try {
+      await callClient.unpublishVideo();
+    } catch (err) {
+      console.error('[CallContext] stopLocalVideo failed:', err);
+    }
+  }, [callClient]);
+
+  // =====================================================
+  // ビデオ：カメラON/OFF切替
+  // =====================================================
+  const toggleCameraOff = useCallback(async () => {
+    if (!callClient) return;
+    try {
+      const newMuted = !isCameraOff;
+      await callClient.setVideoMuted(newMuted);
+      setIsCameraOff(newMuted);
+    } catch (err) {
+      console.error('[CallContext] toggleCameraOff failed:', err);
+      throw err;
+    }
+  }, [callClient, isCameraOff]);
 
   // =====================================================
   // 着信ダイアログを閉じる（DB を触らずUIだけ閉じる。タイムアウト等で使う）
@@ -583,6 +739,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       }
       setCurrentCall(null);
       setIncomingCall(null);
+      setIsCameraOff(false);
       selfInitiatedCallIdsRef.current.clear();
     }
   }, [user, callClient]);
@@ -601,8 +758,16 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         isRejectingCall,
         endCall,
         isEndingCall,
+        cancelOutgoingCall,
+        isCancellingCall,
         isMuted,
         toggleMute,
+        isCameraOff,
+        toggleCameraOff,
+        localVideoContainerRef,
+        remoteVideoContainerRef,
+        startLocalVideo,
+        stopLocalVideo,
         dismissIncomingCall,
       }}
     >

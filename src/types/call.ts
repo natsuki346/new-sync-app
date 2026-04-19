@@ -41,9 +41,9 @@ export type ParticipantStatus = 'invited' | 'joined' | 'declined' | 'missed' | '
 /**
  * メッセージの種類（messages.message_type）
  * 既存: text, image, audio
- * 追加: call_started, call_ended
+ * 追加: call_ended, call_missed, call_cancelled
  */
-export type MessageType = 'text' | 'image' | 'audio' | 'call_started' | 'call_ended';
+export type MessageType = 'text' | 'image' | 'audio' | 'call_ended' | 'call_missed' | 'call_cancelled';
 
 // =====================================================
 // DB Row 型の再エクスポート + Union型による厳密化
@@ -102,6 +102,6 @@ export function isParticipantStatus(value: string): value is ParticipantStatus {
 
 export function isCallMessageType(
   value: string
-): value is 'call_started' | 'call_ended' {
-  return value === 'call_started' || value === 'call_ended';
+): value is 'call_ended' | 'call_missed' | 'call_cancelled' {
+  return value === 'call_ended' || value === 'call_missed' || value === 'call_cancelled';
 }

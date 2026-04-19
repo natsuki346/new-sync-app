@@ -20,6 +20,12 @@ type ChatMsg = {
   image?: string;
   audioUrl?: string;
   audioDuration?: number;
+  messageType?: string;
+  callInfo?: {
+    durationSeconds: number | null;
+    status: string;
+    callType: 'voice' | 'video';
+  };
   time: string;
   isRead: boolean;
   dateLabel: string;
@@ -35,6 +41,13 @@ function nowTime() {
 }
 
 function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function formatCallDuration(seconds: number | null): string {
+  if (seconds == null || seconds < 0) return '0:00';
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${s.toString().padStart(2, '0')}`;
@@ -300,7 +313,11 @@ export default function ChatDetailPage() {
     (async () => {
       const { data, error } = await (supabase as any)
         .from('messages')
-        .select('id, content, message_type, image_url, audio_url, audio_duration_seconds, created_at, user_id, call_id')
+        .select(`
+          id, content, message_type, image_url, audio_url, audio_duration_seconds,
+          created_at, user_id, call_id,
+          call:calls(duration_seconds, status, call_type)
+        `)
         .eq('conversation_id', convId)
         .order('created_at', { ascending: true })
         .limit(50);
@@ -315,6 +332,14 @@ export default function ChatDetailPage() {
         image:         row.message_type === 'image' ? (row.image_url ?? undefined) : undefined,
         audioUrl:      row.message_type === 'audio' ? (row.audio_url ?? undefined) : undefined,
         audioDuration: row.audio_duration_seconds ?? undefined,
+        messageType:   row.message_type ?? undefined,
+        callInfo: (row.message_type === 'call_ended' || row.message_type === 'call_missed' || row.message_type === 'call_cancelled')
+          ? {
+              durationSeconds: row.call?.duration_seconds ?? null,
+              status:   row.call?.status   ?? '',
+              callType: row.call?.call_type ?? 'voice',
+            }
+          : undefined,
         time:          fmtMsgTime(row.created_at),
         isRead:        true,
         dateLabel:     fmtDateLabel(row.created_at),
@@ -354,6 +379,14 @@ export default function ChatDetailPage() {
             image:         row.message_type === 'image' ? (row.image_url ?? undefined) : undefined,
             audioUrl:      row.message_type === 'audio' ? (row.audio_url ?? undefined) : undefined,
             audioDuration: row.audio_duration_seconds ?? undefined,
+            messageType:   row.message_type ?? undefined,
+            callInfo: (row.message_type === 'call_ended' || row.message_type === 'call_missed' || row.message_type === 'call_cancelled')
+              ? {
+                  durationSeconds: row.call?.duration_seconds ?? null,
+                  status:   row.call?.status   ?? '',
+                  callType: row.call?.call_type ?? 'voice',
+                }
+              : undefined,
             time:          fmtMsgTime(row.created_at),
             isRead:        true,
             dateLabel:     fmtDateLabel(row.created_at),
@@ -734,56 +767,87 @@ export default function ChatDetailPage() {
                 className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
                 style={{ maxWidth: '72%' }}
               >
-                <div
-                  className={`text-sm leading-relaxed select-none ${
-                    (msg.image || msg.audioUrl) ? 'overflow-hidden p-0' : 'px-3.5 py-2'
-                  }`}
-                  style={
-                    isMe
-                      ? {
-                          background: !myBubbleColor || myBubbleColor === 'rainbow'
-                            ? 'linear-gradient(135deg, #FF6B6B, #FF8E53, #FFD93D, #6BCB77, #4D96FF, #9B59B6)'
-                            : myBubbleColor,
-                          color: myMsgColor || '#ffffff',
-                          borderRadius: '18px 18px 4px 18px',
-                          fontWeight: 500,
-                          boxShadow: '0 2px 8px rgba(155,89,182,0.3)',
-                        }
-                      : {
-                          background: theirBubbleColor || 'rgba(255,255,255,0.08)',
-                          color: theirMsgColor || 'var(--foreground)',
-                          border: '1px solid rgba(255,255,255,0.12)',
-                          borderRadius: '18px 18px 18px 4px',
-                          backdropFilter: 'blur(8px)',
-                        }
-                  }
-                >
-                  {msg.image ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={msg.image}
-                      alt="sent image"
-                      className="max-w-full max-h-60 object-cover"
-                      style={{ borderRadius: 'inherit' }}
-                    />
-                  ) : msg.audioUrl ? (
-                    <VoiceMessagePlayer
-                      url={msg.audioUrl}
-                      duration={msg.audioDuration ?? 0}
-                      isMyMessage={isMe}
-                      bubbleColor={
-                        isMe
-                          ? (!myBubbleColor || myBubbleColor === 'rainbow'
+                {msg.messageType === 'call_ended' ? (
+                  <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 px-4 py-3 inline-flex flex-col items-start gap-1">
+                    <span className="text-sm text-gray-300">
+                      📞 {msg.callInfo?.callType === 'video' ? 'ビデオ通話' : '音声通話'}
+                    </span>
+                    <span className="text-xs text-gray-500 tabular-nums">
+                      {formatCallDuration(msg.callInfo?.durationSeconds ?? null)}
+                    </span>
+                  </div>
+                ) : msg.messageType === 'call_missed' ? (
+                  <div className="rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-3 inline-flex flex-col items-start gap-2">
+                    <span className="text-sm text-red-400 font-medium">📞✕ 不在着信</span>
+                    <button
+                      className="text-xs text-red-300 hover:text-red-200 underline"
+                      onClick={() => { console.log('[call_missed] かけ直す TODO'); }}
+                    >
+                      かけ直す
+                    </button>
+                  </div>
+                ) : msg.messageType === 'call_cancelled' ? (
+                  <div className="rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-3 inline-flex flex-col items-start gap-2">
+                    <span className="text-sm text-red-400 font-medium">📞✕ キャンセル</span>
+                    <button
+                      className="text-xs text-red-300 hover:text-red-200 underline"
+                      onClick={() => { console.log('[call_cancelled] かけ直す TODO'); }}
+                    >
+                      かけ直す
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    className={`text-sm leading-relaxed select-none ${
+                      (msg.image || msg.audioUrl) ? 'overflow-hidden p-0' : 'px-3.5 py-2'
+                    }`}
+                    style={
+                      isMe
+                        ? {
+                            background: !myBubbleColor || myBubbleColor === 'rainbow'
                               ? 'linear-gradient(135deg, #FF6B6B, #FF8E53, #FFD93D, #6BCB77, #4D96FF, #9B59B6)'
-                              : myBubbleColor)
-                          : (theirBubbleColor || 'rgba(255,255,255,0.08)')
-                      }
-                      textColor={isMe ? (myMsgColor || '#ffffff') : (theirMsgColor || 'var(--foreground)')}
-                    />
-                  ) : (
-                    msg.text
-                  )}
-                </div>
+                              : myBubbleColor,
+                            color: myMsgColor || '#ffffff',
+                            borderRadius: '18px 18px 4px 18px',
+                            fontWeight: 500,
+                            boxShadow: '0 2px 8px rgba(155,89,182,0.3)',
+                          }
+                        : {
+                            background: theirBubbleColor || 'rgba(255,255,255,0.08)',
+                            color: theirMsgColor || 'var(--foreground)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            borderRadius: '18px 18px 18px 4px',
+                            backdropFilter: 'blur(8px)',
+                          }
+                    }
+                  >
+                    {msg.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={msg.image}
+                        alt="sent image"
+                        className="max-w-full max-h-60 object-cover"
+                        style={{ borderRadius: 'inherit' }}
+                      />
+                    ) : msg.audioUrl ? (
+                      <VoiceMessagePlayer
+                        url={msg.audioUrl}
+                        duration={msg.audioDuration ?? 0}
+                        isMyMessage={isMe}
+                        bubbleColor={
+                          isMe
+                            ? (!myBubbleColor || myBubbleColor === 'rainbow'
+                                ? 'linear-gradient(135deg, #FF6B6B, #FF8E53, #FFD93D, #6BCB77, #4D96FF, #9B59B6)'
+                                : myBubbleColor)
+                            : (theirBubbleColor || 'rgba(255,255,255,0.08)')
+                        }
+                        textColor={isMe ? (myMsgColor || '#ffffff') : (theirMsgColor || 'var(--foreground)')}
+                      />
+                    ) : (
+                      msg.text
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* 時刻 + 既読（グループ末尾のみ） */}
