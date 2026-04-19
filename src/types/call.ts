@@ -15,27 +15,28 @@ import type { Database } from '@/lib/database.types';
 // =====================================================
 
 /** 通話の種類 */
-export type CallType = 'audio' | 'video';
+export type CallType = 'voice' | 'video';
 
 /**
  * 通話全体のステータス（calls.status）
  * - ringing:  発信直後〜最初の誰かが応答するまで
- * - active:   通話中（最低1人が応答済み）
+ * - ongoing:  通話中（最低1人が応答済み）
  * - ended:    正常終了
  * - missed:   誰も応答せずタイムアウト（不在着信）
- * - rejected: 全員が拒否
+ * - declined: 全員が拒否
+ * - failed:   接続失敗などの異常終了
  */
-export type CallStatus = 'ringing' | 'active' | 'ended' | 'missed' | 'rejected';
+export type CallStatus = 'ringing' | 'ongoing' | 'ended' | 'missed' | 'declined' | 'failed';
 
 /**
  * 参加者個別のステータス（call_participants.status）
- * - ringing:  呼び出し中（未応答）
+ * - invited:  呼び出し中（未応答）
  * - joined:   参加中
- * - left:     退出済み
- * - rejected: 拒否した
+ * - declined: 拒否した
  * - missed:   タイムアウトで応答なし
+ * - left:     退出済み
  */
-export type ParticipantStatus = 'ringing' | 'joined' | 'left' | 'rejected' | 'missed';
+export type ParticipantStatus = 'invited' | 'joined' | 'declined' | 'missed' | 'left';
 
 /**
  * メッセージの種類（messages.message_type）
@@ -88,15 +89,15 @@ export interface AgoraJoinCredentials {
 // =====================================================
 
 export function isCallType(value: string): value is CallType {
-  return value === 'audio' || value === 'video';
+  return value === 'voice' || value === 'video';
 }
 
 export function isCallStatus(value: string): value is CallStatus {
-  return ['ringing', 'active', 'ended', 'missed', 'rejected'].includes(value);
+  return ['ringing', 'ongoing', 'ended', 'missed', 'declined', 'failed'].includes(value);
 }
 
 export function isParticipantStatus(value: string): value is ParticipantStatus {
-  return ['ringing', 'joined', 'left', 'rejected', 'missed'].includes(value);
+  return ['invited', 'joined', 'declined', 'missed', 'left'].includes(value);
 }
 
 export function isCallMessageType(

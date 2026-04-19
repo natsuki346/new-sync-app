@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { type Conversation } from '@/lib/mockData';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useCall } from '@/contexts/CallContext';
 
 // ── 開発用自動返信フラグ ──────────────────────────────────────────
 const DEV_AUTO_REPLY = false;
@@ -66,6 +67,7 @@ export default function ChatDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const { user } = useAuth();
+  const { startCall, isStartingCall } = useCall();
 
   // params.id が conversation_id か user_id かを解決した実際の conversation_id
   const [convId,    setConvId]    = useState<string | null>(null);
@@ -298,7 +300,7 @@ export default function ChatDetailPage() {
     (async () => {
       const { data, error } = await (supabase as any)
         .from('messages')
-        .select('id, content, message_type, image_url, audio_url, audio_duration_seconds, created_at, user_id')
+        .select('id, content, message_type, image_url, audio_url, audio_duration_seconds, created_at, user_id, call_id')
         .eq('conversation_id', convId)
         .order('created_at', { ascending: true })
         .limit(50);
@@ -603,9 +605,21 @@ export default function ChatDetailPage() {
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {/* 電話 */}
           <button
-            className="w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition-transform"
-            style={{ background: 'var(--surface)', border: '1px solid var(--surface-2)' }}
-          >
+  onClick={() => {
+    if (!convId || !otherUserId) return;
+    startCall({
+      conversationId: convId,
+      calleeUserIds: [otherUserId],
+      callType: 'voice',
+    }).catch((err) => {
+      console.error('[voice call] failed:', err);
+      alert('発信に失敗しました: ' + (err?.message ?? 'unknown'));
+    });
+  }}
+  disabled={isStartingCall || !otherUserId}
+  className="w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50"
+  style={{ background: 'var(--surface)', border: '1px solid var(--surface-2)' }}
+>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
               className="w-[18px] h-[18px]" style={{ color: 'rgba(255,255,255,0.7)' }}
             >
@@ -615,10 +629,22 @@ export default function ChatDetailPage() {
             </svg>
           </button>
           {/* ビデオ */}
-          <button
-            className="w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition-transform"
-            style={{ background: 'var(--surface)', border: '1px solid var(--surface-2)' }}
-          >
+<button
+  onClick={() => {
+    if (!convId || !otherUserId) return;
+    startCall({
+      conversationId: convId,
+      calleeUserIds: [otherUserId],
+      callType: 'video',
+    }).catch((err) => {
+      console.error('[video call] failed:', err);
+      alert('発信に失敗しました: ' + (err?.message ?? 'unknown'));
+    });
+  }}
+  disabled={isStartingCall || !otherUserId}
+  className="w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition-transform disabled:opacity-50"
+  style={{ background: 'var(--surface)', border: '1px solid var(--surface-2)' }}
+>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}
               className="w-[18px] h-[18px]" style={{ color: 'rgba(255,255,255,0.7)' }}
             >

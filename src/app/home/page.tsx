@@ -1332,7 +1332,6 @@ export default function HomePage() {
   }
 
   function handleHashtagClick(tag: string) {
-    handleFollowHashtag(tag);
     router.push(`/search?tag=${tag.replace('#', '')}`);
   }
 

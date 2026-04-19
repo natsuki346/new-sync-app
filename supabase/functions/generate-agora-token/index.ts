@@ -29,7 +29,7 @@
  */
 
 import "@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 import {
   RtcTokenBuilder,
   RtcRole,
@@ -157,7 +157,12 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ error: "Call not found" }, 404);
     }
 
-    if (call.status === "ended" || call.status === "missed" || call.status === "rejected") {
+    if (
+      call.status === "ended" ||
+      call.status === "missed" ||
+      call.status === "declined" ||
+      call.status === "failed"
+    ) {
       return jsonResponse({ error: "Call has ended" }, 410);
     }
 

@@ -5,6 +5,10 @@ import BottomNav from "@/components/BottomNav";
 import FocusScrollHandler from "@/components/FocusScrollHandler";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { IntlProvider } from "@/components/IntlProvider";
+import { CallProvider } from "@/contexts/CallContext";
+import IncomingCallOverlay from "@/components/call/IncomingCallOverlay";
+import OutgoingCallOverlay from "@/components/call/OutgoingCallOverlay";
+import ActiveCallOverlay from "@/components/call/ActiveCallOverlay";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -48,17 +52,22 @@ export default function RootLayout({
         {/* 375px phone frame — centered on desktop, full-screen on mobile */}
         <FocusScrollHandler />
         <AuthProvider>
-          <IntlProvider>
-            <div id="app-root" className="phone-frame" style={{ height: '100dvh' }}>
-              {/* Content area — each page manages its own scroll */}
-              <div className="flex-1 flex flex-col min-h-0">
-                {children}
-              </div>
-              {/* Bottom nav — pinned inside the frame */}
-              <BottomNav />
-            </div>
-          </IntlProvider>
-        </AuthProvider>
+  <IntlProvider>
+    <CallProvider>
+      <div id="app-root" className="phone-frame" style={{ height: '100dvh' }}>
+        {/* Content area ... */}
+        <div className="flex-1 flex flex-col min-h-0">
+          {children}
+        </div>
+        {/* Bottom nav ... */}
+        <BottomNav />
+      </div>
+      <IncomingCallOverlay />
+      <OutgoingCallOverlay />
+      <ActiveCallOverlay />
+    </CallProvider>
+  </IntlProvider>
+</AuthProvider>
       </body>
     </html>
   );
