@@ -6,8 +6,9 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { getFriends } from '@/lib/friendship';
-import { CURRENT_USER, MEMORY_DATA, type Post, type MemoryDayData, type Reaction } from '@/lib/mockData';
-import { PassionGraph, MY_PASSION } from '@/components/PassionGraph';
+import { CURRENT_USER, type Post } from '@/lib/mockData';
+import { PassionGraph, type PassionItem } from '@/components/PassionGraph';
+import { MemoryCalendarTab, type HeatmapRow } from '@/components/MemoryCalendarTab';
 import { RAINBOW } from '@/lib/rainbow';
 
 // ── 友達型 ────────────────────────────────────────────────────────
@@ -458,10 +459,6 @@ function HashtagManagerModal({ onClose }: {
 // ── 型 ────────────────────────────────────────────────────────────
 type TabKey = 'posts' | 'memory';
 
-// ── カレンダー ────────────────────────────────────────────────────
-const DOW_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
-
-
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // プロフィール編集モーダル
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -743,6 +740,14 @@ export default function ProfilePage() {
   const [friends,       setFriends]       = useState<Friend[]>([]);
   const [friendsLoading, setFriendsLoading] = useState(true);
 
+  // ── HEAT MAP ───────────────────────────────────────────────────
+  const [passionItems,    setPassionItems]    = useState<PassionItem[]>([]);
+  const [passionLoading,  setPassionLoading]  = useState(true);
+
+  // ── Memory Calendar ────────────────────────────────────────────
+  const [heatmapData,     setHeatmapData]     = useState<HeatmapRow[]>([]);
+  const [heatmapLoading,  setHeatmapLoading]  = useState(true);
+
   // Supabase からプロフィールを初期読み込み
   useEffect(() => {
     if (!user) return;
@@ -818,6 +823,42 @@ export default function ProfilePage() {
         setFriendsLoading(false);
       })
       .catch(err => { console.error('友達取得エラー:', err); setFriendsLoading(false); });
+  }, [user]);
+
+  // HEAT MAP: hashtag_engagements から実データ取得
+  useEffect(() => {
+    if (!user) return;
+    setPassionLoading(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase.rpc as any)('get_hashtag_engagements_for_user', { p_user_id: user.id })
+      .then(({ data }: { data: { tag: string; post_count: number; reaction_count: number }[] | null }) => {
+        const rows = data ?? [];
+        const total = rows.reduce((s, r) => s + r.post_count + r.reaction_count, 0);
+        if (total === 0) {
+          setPassionItems([]);
+        } else {
+          setPassionItems(
+            rows
+              .map(r => ({ tag: r.tag, pct: Math.round(((r.post_count + r.reaction_count) / total) * 100) }))
+              .sort((a, b) => b.pct - a.pct)
+          );
+        }
+        setPassionLoading(false);
+      })
+      .catch(() => setPassionLoading(false));
+  }, [user]);
+
+  // Memory Calendar: get_memory_heatmap RPC
+  useEffect(() => {
+    if (!user) return;
+    setHeatmapLoading(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase.rpc as any)('get_memory_heatmap', { p_user_id: user.id })
+      .then(({ data }: { data: HeatmapRow[] | null }) => {
+        setHeatmapData(data ?? []);
+        setHeatmapLoading(false);
+      })
+      .catch(() => setHeatmapLoading(false));
   }, [user]);
 
   async function handleSave(d: { name: string; handle: string; bio: string; avatar: string; avatarUrl: string; headerUrl: string }) {
@@ -976,7 +1017,11 @@ export default function ProfilePage() {
         </div>
 
         {/* HEAT MAP */}
-        <PassionGraph items={MY_PASSION} />
+        {!passionLoading && (
+          passionItems.length > 0
+            ? <PassionGraph items={passionItems} />
+            : <p className="text-sm" style={{ color: 'var(--muted)' }}>まだ活動がありません</p>
+        )}
       </div>
 
       {/* ── タブバー ─────────────────────────────────────────────── */}
@@ -1060,7 +1105,9 @@ export default function ProfilePage() {
       )}
 
       {/* ── メモリーカレンダータブ ────────────────────────────────── */}
-      {activeTab === 'memory' && <MemoryCalendarTab />}
+      {activeTab === 'memory' && (
+        <MemoryCalendarTab heatmapData={heatmapData} loading={heatmapLoading} />
+      )}
 
       {/* ── ピン制限トースト ─────────────────────────────────────── */}
       {pinToast && (
@@ -1206,251 +1253,4 @@ function EmptyMsg({ children }: { children?: React.ReactNode }) {
     </div>
   );
 }
-
-// ── MemoryCalendarTab ─────────────────────────────────────────────
-
-function MemoryCalendarTab() {
-  const router = useRouter();
-  const today = new Date();
-  const [year,        setYear]       = useState(today.getFullYear());
-  const [month,       setMonth]      = useState(today.getMonth()); // 0-indexed
-  const [selectedDay, setSelectedDay] = useState<string | null>(null);
-
-  function prevMonth() {
-    if (month === 0) { setYear(y => y - 1); setMonth(11); }
-    else setMonth(m => m - 1);
-    setSelectedDay(null);
-  }
-  function nextMonth() {
-    if (month === 11) { setYear(y => y + 1); setMonth(0); }
-    else setMonth(m => m + 1);
-    setSelectedDay(null);
-  }
-
-  const firstDow    = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells: (number | null)[] = [
-    ...Array(firstDow).fill(null),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-  ];
-  while (cells.length % 7 !== 0) cells.push(null);
-
-  function dateKey(day: number) {
-    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-  }
-
-  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  const selectedData: MemoryDayData | null = selectedDay ? (MEMORY_DATA[selectedDay] ?? null) : null;
-
-  return (
-    <div className="flex flex-col pb-10">
-      {/* ナビゲーション */}
-      <div className="flex items-center justify-between px-5 pt-4 pb-3">
-        <button onClick={prevMonth} className="w-9 h-9 flex items-center justify-center rounded-full active:scale-90 transition-all" style={{ background: 'var(--surface-2)' }}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4" style={{ color: 'var(--foreground)' }}>
-            <path strokeLinecap="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
-          </svg>
-        </button>
-        <p className="font-bold text-sm" style={{ color: 'var(--foreground)' }}>{year}年{month + 1}月</p>
-        <button onClick={nextMonth} className="w-9 h-9 flex items-center justify-center rounded-full active:scale-90 transition-all" style={{ background: 'var(--surface-2)' }}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-4 h-4" style={{ color: 'var(--foreground)' }}>
-            <path strokeLinecap="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-          </svg>
-        </button>
-      </div>
-
-      {/* 曜日ヘッダー */}
-      <div className="grid grid-cols-7 px-3 pb-1">
-        {DOW_LABELS.map((d, i) => (
-          <p key={d} className="text-center text-[11px] font-bold py-1"
-            style={{ color: i === 0 ? '#E63946' : i === 6 ? '#4A9EFF' : 'rgba(255,255,255,0.35)' }}>
-            {d}
-          </p>
-        ))}
-      </div>
-
-      {/* カレンダーグリッド */}
-      <div className="grid grid-cols-7 px-3 gap-y-1">
-        {cells.map((day, idx) => {
-          if (day === null) return <div key={`e-${idx}`} />;
-          const key  = dateKey(day);
-          const data = MEMORY_DATA[key];
-          const hasPosts       = data && data.posts.length > 0;
-          const hasConnections = data && data.newConnections.length > 0;
-          const hasPhotos      = data && data.savedPhotos.length > 0;
-          const isSelected     = selectedDay === key;
-          const isToday        = key === todayKey;
-          const dow = (firstDow + day - 1) % 7;
-          return (
-            <button
-              key={key}
-              onClick={() => setSelectedDay(isSelected ? null : key)}
-              className="flex flex-col items-center py-1.5 rounded-xl transition-all active:scale-90"
-              style={{
-                background: isSelected ? 'rgba(255,26,26,0.15)' : 'transparent',
-                border: isSelected ? '1.5px solid rgba(255,26,26,0.45)' : '1.5px solid transparent',
-              }}
-            >
-              <span className="text-[13px] leading-tight"
-                style={{
-                  fontWeight: isToday ? 800 : 500,
-                  color: isToday ? '#FF1A1A' : dow === 0 ? '#E63946' : dow === 6 ? '#4A9EFF' : 'rgba(255,255,255,0.82)',
-                }}>
-                {day}
-              </span>
-              <div className="flex gap-[2px] mt-0.5 h-[9px] items-center">
-                {hasPosts       && <span style={{ fontSize: 6, color: '#FF1A1A', lineHeight: 1 }}>●</span>}
-                {hasConnections && <span style={{ fontSize: 6, color: '#E63946', lineHeight: 1 }}>♡</span>}
-                {hasPhotos      && <span style={{ fontSize: 6, color: '#4A9EFF', lineHeight: 1 }}>■</span>}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* アコーディオン詳細 */}
-      {selectedDay && (
-        <div className="mx-4 mt-4 rounded-2xl overflow-hidden" style={{ background: 'var(--surface)', border: '1px solid var(--surface-2)' }}>
-          <div className="px-4 pt-3 pb-2" style={{ borderBottom: '1px solid var(--surface-2)' }}>
-            <p className="text-xs font-bold" style={{ color: 'var(--foreground)' }}>{selectedDay}</p>
-          </div>
-
-          {!selectedData || (
-            selectedData.posts.length === 0 &&
-            selectedData.savedPhotos.length === 0 &&
-            selectedData.newConnections.length === 0 &&
-            selectedData.events.length === 0
-          ) ? (
-            <p className="text-sm px-4 py-4" style={{ color: 'var(--muted)' }}>この日の記録はありません</p>
-          ) : (
-            <div>
-              {selectedData.posts.length > 0 && (
-                <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--surface-2)' }}>
-                  <p className="text-[11px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1" style={{ color: '#FF1A1A' }}>
-                    <span>📝</span> 投稿
-                  </p>
-                  {selectedData.posts.map(p => (
-                    <div key={p.id} className="py-1">
-                      {/* 投稿テキスト */}
-                      <p className="text-sm leading-relaxed" style={{ color: 'rgba(255,255,255,0.82)' }}>
-                        {p.text}
-                      </p>
-                      {/* リアクター一覧 */}
-                      {p.reactions && p.reactions.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mt-2">
-                          {p.reactions.map((r: Reaction) => (
-                            <button
-                              key={r.id}
-                              onClick={() => router.push(`/profile/${r.userId}`)}
-                              style={{
-                                display:      'flex',
-                                alignItems:   'center',
-                                gap:          4,
-                                background:   'rgba(255,255,255,0.08)',
-                                border:       '0.5px solid rgba(255,255,255,0.15)',
-                                borderRadius: 20,
-                                padding:      '4px 8px',
-                                cursor:       'pointer',
-                              }}
-                            >
-                              {/* 絵文字アイコン（丸背景） */}
-                              <span style={{
-                                width:          18,
-                                height:         18,
-                                borderRadius:   '50%',
-                                background:     'linear-gradient(135deg,#FF1A1A,#8B0000)',
-                                display:        'flex',
-                                alignItems:     'center',
-                                justifyContent: 'center',
-                                fontSize:       11,
-                                lineHeight:     1,
-                                flexShrink:     0,
-                              }}>
-                                {r.avatar}
-                              </span>
-                              {/* リアクション絵文字 */}
-                              <span style={{ fontSize: 13, lineHeight: 1 }}>{r.emoji}</span>
-                              {/* ユーザー名 */}
-                              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)' }}>{r.name}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {selectedData.savedPhotos.length > 0 && (
-                <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--surface-2)' }}>
-                  <p className="text-[11px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1" style={{ color: '#4A9EFF' }}>
-                    <span>📷</span> 保存した写真 ({selectedData.savedPhotos.length})
-                  </p>
-                  <div className="flex gap-2 flex-wrap">
-                    {selectedData.savedPhotos.map(s => (
-                      <div key={s.id} className="w-14 h-14 rounded-xl flex items-center justify-center text-xl" style={{ background: 'var(--surface-2)' }}>🖼️</div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {selectedData.newConnections.length > 0 && (
-                <div className="px-4 py-3" style={{ borderBottom: '1px solid var(--surface-2)' }}>
-                  <p className="text-[11px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1" style={{ color: '#E63946' }}>
-                    <span>🤝</span> 新しいつながり
-                  </p>
-                  <div className="flex flex-col gap-1">
-                    {selectedData.newConnections.map(c => (
-                      <button
-                        key={c.id}
-                        onClick={() => router.push(`/profile/${c.username.replace('@', '')}`)}
-                        className="flex items-center gap-2 w-full rounded-xl px-2 py-1.5 active:opacity-70 transition-opacity text-left"
-                        style={{ background: 'transparent' }}
-                      >
-                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-sm flex-shrink-0" style={{ background: 'var(--surface-2)' }}>{c.avatar}</div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-bold" style={{ color: 'var(--foreground)' }}>{c.name}</p>
-                          <p className="text-[10px]" style={{ color: 'var(--muted)' }}>{c.username}</p>
-                        </div>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--muted)' }}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                        </svg>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {selectedData.events.length > 0 && (
-                <div className="px-4 py-3">
-                  <p className="text-[11px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1" style={{ color: 'rgba(255,255,255,0.5)' }}>
-                    <span>🎉</span> イベント
-                  </p>
-                  <div className="flex flex-col gap-1">
-                    {selectedData.events.map(e => (
-                      <button
-                        key={e.id}
-                        onClick={() => router.push(`/search/${e.eventId}`)}
-                        className="flex items-center gap-2 w-full rounded-xl px-2 py-1.5 active:opacity-70 transition-opacity text-left"
-                        style={{ background: 'transparent' }}
-                      >
-                        <p className="flex-1 text-sm" style={{ color: 'rgba(255,255,255,0.82)' }}>{e.name}</p>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--muted)' }}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-                        </svg>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 凡例 */}
-      <div className="flex gap-5 justify-center mt-4 px-4">
-        <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}><span style={{ color: '#FF1A1A' }}>●</span> 投稿</span>
-        <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}><span style={{ color: '#E63946' }}>♡</span> つながり</span>
-        <span className="flex items-center gap-1 text-[11px]" style={{ color: 'var(--muted)' }}><span style={{ color: '#4A9EFF' }}>■</span> 保存</span>
-      </div>
-    </div>
-  );
-}
+

@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranslations } from 'next-intl';
 import { useRouter, useParams } from 'next/navigation';
 import { type Post } from '@/lib/mockData';
-import { PassionGraph } from '@/components/PassionGraph';
+import { PassionGraph, type PassionItem } from '@/components/PassionGraph';
+import { MemoryCalendarTab, type HeatmapRow } from '@/components/MemoryCalendarTab';
 import PostCard from '@/components/PostCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -90,33 +91,39 @@ export default function FriendProfilePage() {
     })();
   }, [profileUserId]);
 
-  // ── PassionGraph 用データ（投稿ハッシュタグ頻度）
-  const [passionItems, setPassionItems] = useState<{ tag: string; pct: number }[]>([]);
+  // ── HEAT MAP: hashtag_engagements から実データ取得
+  const [passionItems,   setPassionItems]   = useState<PassionItem[]>([]);
+  const [activeTab,      setActiveTab]      = useState<'posts' | 'memory'>('posts');
+  const [heatmapData,    setHeatmapData]    = useState<HeatmapRow[]>([]);
+  const [heatmapLoading, setHeatmapLoading] = useState(true);
 
   useEffect(() => {
     if (!profileUser?.id) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (supabase.from('posts') as any)
-      .select('hashtags')
-      .eq('user_id', profileUser.id)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .then(({ data }: { data: any[] | null }) => {
-        if (!data || data.length === 0) return;
-        const counts: Record<string, number> = {};
-        data.forEach(post => {
-          (post.hashtags as string[])?.forEach(tag => {
-            counts[tag] = (counts[tag] ?? 0) + 1;
-          });
-        });
-        const total = Object.values(counts).reduce((a, b) => a + b, 0);
-        if (total === 0) return;
+    (supabase.rpc as any)('get_hashtag_engagements_for_user', { p_user_id: profileUser.id })
+      .then(({ data }: { data: { tag: string; post_count: number; reaction_count: number }[] | null }) => {
+        const rows = data ?? [];
+        const total = rows.reduce((s, r) => s + r.post_count + r.reaction_count, 0);
+        if (total === 0) { setPassionItems([]); return; }
         setPassionItems(
-          Object.entries(counts)
-            .map(([tag, count]) => ({ tag, pct: Math.round((count / total) * 100) }))
+          rows
+            .map(r => ({ tag: r.tag, pct: Math.round(((r.post_count + r.reaction_count) / total) * 100) }))
             .sort((a, b) => b.pct - a.pct)
-            .slice(0, 5)
         );
       });
+  }, [profileUser?.id]);
+
+  // ── Memory Calendar: get_memory_heatmap RPC
+  useEffect(() => {
+    if (!profileUser?.id) return;
+    setHeatmapLoading(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase.rpc as any)('get_memory_heatmap', { p_user_id: profileUser.id })
+      .then(({ data }: { data: HeatmapRow[] | null }) => {
+        setHeatmapData(data ?? []);
+        setHeatmapLoading(false);
+      })
+      .catch(() => setHeatmapLoading(false));
   }, [profileUser?.id]);
 
   // ── 投稿リスト
@@ -536,53 +543,90 @@ export default function FriendProfilePage() {
         )}
       </div>
 
-      {/* ── ピン止め投稿 ─────────────────────────────────────────── */}
-      {pinnedPosts.length > 0 && (
-        <div className="flex-shrink-0">
-          <div style={{ padding: '16px 16px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>📌 ピン止め</span>
+      {/* ── タブバー ─────────────────────────────────────────────── */}
+      <div
+        className="flex items-center flex-shrink-0 sticky top-0 z-30"
+        style={{ background: 'var(--background)', borderBottom: '1px solid var(--surface-2)' }}
+      >
+        <button
+          onClick={() => setActiveTab('posts')}
+          className="flex-1 py-3 flex items-center justify-center transition-all active:opacity-70 relative"
+          style={{ color: activeTab === 'posts' ? '#7C6FE8' : 'var(--muted)' }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-5 h-5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
+          </svg>
+          {activeTab === 'posts' && (
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, background: RAINBOW }} />
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('memory')}
+          className="flex-1 py-3 flex items-center justify-center transition-all active:opacity-70 relative"
+          style={{ color: activeTab === 'memory' ? '#7C6FE8' : 'var(--muted)' }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-5 h-5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+          </svg>
+          {activeTab === 'memory' && (
+            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 2, background: RAINBOW }} />
+          )}
+        </button>
+      </div>
+
+      {/* ── 投稿タブ ─────────────────────────────────────────────── */}
+      {activeTab === 'posts' && (
+        <>
+          {pinnedPosts.length > 0 && (
+            <div className="flex-shrink-0">
+              <div style={{ padding: '16px 16px 12px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>📌 ピン止め</span>
+              </div>
+              {pinnedPosts.map(post => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  onHashtagClick={handleHashtagClick}
+                  onUserClick={() => {}}
+                  hashtagBorderColor={hashtagColor || undefined}
+                />
+              ))}
+              <div style={{ height: 1, background: 'var(--surface-2)', margin: '4px 0 0' }} />
+            </div>
+          )}
+
+          <div className="flex-shrink-0 px-4 pt-4 pb-1">
+            <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--muted)' }}>Posts</p>
           </div>
-          {pinnedPosts.map(post => (
-            <PostCard
-              key={post.id}
-              post={post}
-              onHashtagClick={handleHashtagClick}
-              onUserClick={() => {}}
-              hashtagBorderColor={hashtagColor || undefined}
-            />
-          ))}
-          <div style={{ height: 1, background: 'var(--surface-2)', margin: '4px 0 0' }} />
-        </div>
+
+          <div className="flex flex-col pb-10">
+            {postsLoading ? (
+              <div className="py-12 text-center">
+                <p className="text-sm" style={{ color: 'var(--muted)' }}>Loading...</p>
+              </div>
+            ) : posts.length === 0 ? (
+              <div className="py-12 text-center">
+                <p className="text-sm" style={{ color: 'var(--muted)' }}>投稿がありません</p>
+              </div>
+            ) : (
+              posts.map(post => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  onHashtagClick={handleHashtagClick}
+                  onUserClick={() => {}}
+                  hashtagBorderColor={hashtagColor || undefined}
+                />
+              ))
+            )}
+          </div>
+        </>
       )}
 
-      {/* ── 投稿リスト ───────────────────────────────────────────── */}
-      <div className="flex-shrink-0 px-4 pt-4 pb-1">
-        <p className="text-[11px] font-bold uppercase tracking-wider" style={{ color: 'var(--muted)' }}>
-          Posts
-        </p>
-      </div>
-
-      <div className="flex flex-col pb-10">
-        {postsLoading ? (
-          <div className="py-12 text-center">
-            <p className="text-sm" style={{ color: 'var(--muted)' }}>Loading...</p>
-          </div>
-        ) : posts.length === 0 ? (
-          <div className="py-12 text-center">
-            <p className="text-sm" style={{ color: 'var(--muted)' }}>投稿がありません</p>
-          </div>
-        ) : (
-          posts.map(post => (
-            <PostCard
-              key={post.id}
-              post={post}
-              onHashtagClick={handleHashtagClick}
-              onUserClick={() => {}}
-              hashtagBorderColor={hashtagColor || undefined}
-            />
-          ))
-        )}
-      </div>
+      {/* ── メモリータブ ─────────────────────────────────────────── */}
+      {activeTab === 'memory' && (
+        <MemoryCalendarTab heatmapData={heatmapData} loading={heatmapLoading} />
+      )}
 
       {/* ── トースト ──────────────────────────────────────────────── */}
       {toast && (
