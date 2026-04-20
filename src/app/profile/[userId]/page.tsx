@@ -8,6 +8,7 @@ import { PassionGraph } from '@/components/PassionGraph';
 import PostCard from '@/components/PostCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { getFriendshipStatus, type FriendshipStatus } from '@/lib/friendship';
 
 const RAINBOW = 'linear-gradient(135deg, #7C6FE8, #A855F7, #EC4899, #F97316, #EAB308, #22C55E, #3B82F6)';
 
@@ -212,8 +213,8 @@ export default function FriendProfilePage() {
   }, [profileUser?.id]);
 
   // ── フォロー状態
-  const [isFriend,      setIsFriend]      = useState(false);
-  const [followLoading, setFollowLoading] = useState(false);
+  const [friendshipStatus, setFriendshipStatus] = useState<FriendshipStatus>('none');
+  const [followLoading,    setFollowLoading]    = useState(false);
 
   // ── 通報・ブロック
   const [moreSheetOpen,   setMoreSheetOpen]   = useState(false);
@@ -262,28 +263,36 @@ export default function FriendProfilePage() {
 
   useEffect(() => {
     if (!user || !profileUser) return;
-    supabase
-      .from('follows')
-      .select('id')
-      .eq('follower_id', user.id)
-      .eq('following_id', profileUser.id)
-      .eq('type', 'user')
-      .maybeSingle()
-      .then(({ data }) => setIsFriend(data !== null));
+    getFriendshipStatus(supabase as any, user.id, profileUser.id)
+      .then(status => setFriendshipStatus(status));
   }, [user, profileUser]);
 
-  const handleFollow = async () => {
-    if (!user || !profileUser || isFriend || followLoading) return;
+  const handleSendRequest = async () => {
+    if (!user || !profileUser || friendshipStatus !== 'none' || followLoading) return;
     setFollowLoading(true);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (supabase.from('follows') as any).insert({
       follower_id:  user.id,
       following_id: profileUser.id,
       type:         'user',
-      status:       'accepted',
+      status:       'pending',
     });
-    if (!error) setIsFriend(true);
-    else console.error('フォローエラー:', error);
+    if (!error) setFriendshipStatus('request_sent');
+    else console.error('申請エラー:', error);
+    setFollowLoading(false);
+  };
+
+  const handleCancelRequest = async () => {
+    if (!user || !profileUser || followLoading) return;
+    setFollowLoading(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('follows') as any)
+      .delete()
+      .eq('follower_id', user.id)
+      .eq('following_id', profileUser.id)
+      .eq('type', 'user')
+      .eq('status', 'pending');
+    setFriendshipStatus('none');
     setFollowLoading(false);
   };
 
@@ -395,20 +404,62 @@ export default function FriendProfilePage() {
       >
         {/* ボタン行 */}
         <div className="flex items-center justify-end gap-2 mb-3">
-          <button
-            onClick={handleFollow}
-            disabled={isFriend || followLoading}
-            className={`px-4 py-1.5 rounded-full text-sm font-bold transition-transform${isFriend ? '' : ' active:scale-[0.97]'}`}
-            style={{
-              background: isFriend ? 'var(--surface-2)' : RAINBOW,
-              border: isFriend ? '1px solid var(--surface-2)' : 'none',
-              color: isFriend ? 'var(--muted)' : '#0d0d1a',
-              cursor: (isFriend || followLoading) ? 'default' : 'pointer',
-              opacity: followLoading ? 0.6 : 1,
-            }}
-          >
-            {isFriend ? t('friends') : followLoading ? '処理中...' : t('connect')}
-          </button>
+          {friendshipStatus === 'none' && (
+            <button
+              onClick={handleSendRequest}
+              disabled={followLoading}
+              className="px-4 py-1.5 rounded-full text-sm font-bold active:scale-[0.97] transition-transform"
+              style={{
+                background: RAINBOW,
+                color: '#0d0d1a',
+                opacity: followLoading ? 0.6 : 1,
+              }}
+            >
+              {followLoading ? '処理中...' : t('connect')}
+            </button>
+          )}
+          {friendshipStatus === 'request_sent' && (
+            <button
+              onClick={handleCancelRequest}
+              disabled={followLoading}
+              className="px-4 py-1.5 rounded-full text-sm font-bold active:scale-[0.97] transition-transform"
+              style={{
+                background: '#f59e0b',
+                color: '#0d0d1a',
+                opacity: followLoading ? 0.6 : 1,
+              }}
+            >
+              申請中
+            </button>
+          )}
+          {friendshipStatus === 'request_received' && (
+            <button
+              disabled
+              className="px-4 py-1.5 rounded-full text-sm font-bold"
+              style={{
+                background: 'var(--surface-2)',
+                border: '1px solid var(--surface-2)',
+                color: 'var(--muted)',
+                cursor: 'default',
+              }}
+            >
+              承認待ち
+            </button>
+          )}
+          {friendshipStatus === 'friends' && (
+            <button
+              disabled
+              className="px-4 py-1.5 rounded-full text-sm font-bold"
+              style={{
+                background: 'var(--surface-2)',
+                border: '1px solid var(--surface-2)',
+                color: 'var(--muted)',
+                cursor: 'default',
+              }}
+            >
+              {t('friends')}
+            </button>
+          )}
           <button
             onClick={() => router.push(`/chat/${profileUser.id}`)}
             className="px-4 py-1.5 rounded-full text-sm font-bold active:scale-[0.97] transition-transform"

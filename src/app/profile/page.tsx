@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { getFriends } from '@/lib/friendship';
 import { CURRENT_USER, MEMORY_DATA, type Post, type MemoryDayData, type Reaction } from '@/lib/mockData';
 import { PassionGraph, MY_PASSION } from '@/components/PassionGraph';
 import { RAINBOW } from '@/lib/rainbow';
@@ -798,39 +799,25 @@ export default function ProfilePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, avatar, handle, name]);
 
-  // Supabase から友達（フォロー中）を取得
+  // Supabase から双方向フレンドを取得
   useEffect(() => {
     if (!user) return;
     setFriendsLoading(true);
-    supabase
-      .from('follows')
-      .select(`
-        following_id,
-        profile:profiles!follows_following_id_fkey (
-          id, username, display_name, avatar_url
-        )
-      `)
-      .eq('follower_id', user.id)
-      .eq('type', 'user')
-      .eq('status', 'accepted')
-      .then(({ data, error }) => {
-        if (error) { console.error('友達取得エラー:', error); }
-        if (data) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const mapped: Friend[] = (data as any[])
-            .filter(row => row.profile)
-            .map(row => ({
-              id:       row.profile.id,
-              name:     row.profile.display_name ?? '',
-              handle:   '@' + (row.profile.username ?? ''),
-              username: row.profile.username ?? '',
-              avatar:   row.profile.avatar_url ?? '👤',
-            }))
-            .sort((a, b) => a.name.localeCompare(b.name, 'ja', { sensitivity: 'base' }));
-          setFriends(mapped);
-        }
+    getFriends(supabase as any, user.id)
+      .then(profiles => {
+        const mapped: Friend[] = profiles
+          .map(p => ({
+            id:       p.id,
+            name:     p.display_name ?? '',
+            handle:   '@' + (p.username ?? ''),
+            username: p.username ?? '',
+            avatar:   p.avatar_url ?? '👤',
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name, 'ja', { sensitivity: 'base' }));
+        setFriends(mapped);
         setFriendsLoading(false);
-      });
+      })
+      .catch(err => { console.error('友達取得エラー:', err); setFriendsLoading(false); });
   }, [user]);
 
   async function handleSave(d: { name: string; handle: string; bio: string; avatar: string; avatarUrl: string; headerUrl: string }) {

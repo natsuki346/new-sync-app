@@ -440,6 +440,20 @@ export default function ChatDetailPage() {
     ]);
   }, []);
 
+  const handleRedial = async (callInfo: ChatMsg['callInfo']) => {
+    if (!convId || !otherUserId || !callInfo?.callType) return;
+    if (isStartingCall) return;
+    try {
+      await startCall({
+        conversationId: convId,
+        calleeUserIds: [otherUserId],
+        callType: callInfo.callType,
+      });
+    } catch (err) {
+      console.error('[redial] failed', err);
+    }
+  };
+
   const handleImageFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
@@ -780,8 +794,9 @@ export default function ChatDetailPage() {
                   <div className="rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-3 inline-flex flex-col items-start gap-2">
                     <span className="text-sm text-red-400 font-medium">📞✕ 不在着信</span>
                     <button
-                      className="text-xs text-red-300 hover:text-red-200 underline"
-                      onClick={() => { console.log('[call_missed] かけ直す TODO'); }}
+                      className="text-xs text-red-300 hover:text-red-200 underline disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={isStartingCall || !otherUserId}
+                      onClick={() => handleRedial(msg.callInfo)}
                     >
                       かけ直す
                     </button>
@@ -790,8 +805,9 @@ export default function ChatDetailPage() {
                   <div className="rounded-lg border border-red-900/50 bg-red-950/30 px-4 py-3 inline-flex flex-col items-start gap-2">
                     <span className="text-sm text-red-400 font-medium">📞✕ キャンセル</span>
                     <button
-                      className="text-xs text-red-300 hover:text-red-200 underline"
-                      onClick={() => { console.log('[call_cancelled] かけ直す TODO'); }}
+                      className="text-xs text-red-300 hover:text-red-200 underline disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={isStartingCall || !otherUserId}
+                      onClick={() => handleRedial(msg.callInfo)}
                     >
                       かけ直す
                     </button>

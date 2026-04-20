@@ -10,7 +10,7 @@ const RAINBOW = 'linear-gradient(to right, #7C6FE8 0%, #D455A8 18%, #E84040 36%,
 
 // ── 型定義 ────────────────────────────────────────────────────────
 
-type NotifType = 'follow' | 'bubble' | 'dm' | 'reaction' | 'comment' | 'event_reminder';
+type NotifType = 'follow' | 'follow_request' | 'follow_accepted' | 'bubble' | 'dm' | 'reaction' | 'comment' | 'event_reminder';
 
 interface Notif {
   id:            string;
@@ -30,13 +30,15 @@ interface Notif {
 
 function getNotifText(type: string, userName: string): { title: string; body: string } {
   switch (type) {
-    case 'follow':         return { title: 'フォローリクエスト',     body: `${userName}さんがフォローしました` };
-    case 'reaction':       return { title: 'リアクション',            body: `${userName}さんがリアクションしました` };
-    case 'comment':        return { title: 'コメント',                body: `${userName}さんがコメントしました` };
-    case 'dm':             return { title: 'メッセージ',              body: `${userName}さんからメッセージ` };
-    case 'bubble':         return { title: 'Bubble',                  body: `${userName}さんがBubbleを送りました` };
-    case 'event_reminder': return { title: 'イベントリマインダー',   body: 'イベントが近づいています' };
-    default:               return { title: '通知',                    body: '' };
+    case 'follow':          return { title: 'フォロー',               body: `${userName}さんがフォローしました` };
+    case 'follow_request':  return { title: 'つながり申請',           body: `${userName}さんがつながりを申請しました` };
+    case 'follow_accepted': return { title: 'つながり承認',           body: `${userName}さんが申請を承認しました` };
+    case 'reaction':        return { title: 'リアクション',           body: `${userName}さんがリアクションしました` };
+    case 'comment':         return { title: 'コメント',               body: `${userName}さんがコメントしました` };
+    case 'dm':              return { title: 'メッセージ',             body: `${userName}さんからメッセージ` };
+    case 'bubble':          return { title: 'Bubble',                 body: `${userName}さんがBubbleを送りました` };
+    case 'event_reminder':  return { title: 'イベントリマインダー',  body: 'イベントが近づいています' };
+    default:                return { title: '通知',                   body: '' };
   }
 }
 
@@ -55,12 +57,14 @@ function getRelativeTime(dateStr: string): string {
 
 function typeStyle(type: NotifType) {
   switch (type) {
-    case 'follow':         return { bg: 'rgba(230,57,70,0.12)',   color: '#E63946', badge: '👤' };
-    case 'bubble':         return { bg: 'rgba(255,107,157,0.12)', color: '#FF6B9D', badge: '🫧' };
-    case 'dm':             return { bg: 'rgba(80,160,255,0.12)',  color: '#50A0FF', badge: '💬' };
-    case 'event_reminder': return { bg: 'rgba(255,180,0,0.12)',   color: '#FFB400', badge: '🔔' };
-    case 'reaction':       return { bg: 'rgba(230,57,70,0.10)',   color: '#E63946', badge: '❤️' };
-    case 'comment':        return { bg: 'rgba(255,160,64,0.12)',  color: '#FFA040', badge: '💬' };
+    case 'follow':          return { bg: 'rgba(230,57,70,0.12)',   color: '#E63946', badge: '👤' };
+    case 'follow_request':  return { bg: 'rgba(124,111,232,0.12)', color: '#7C6FE8', badge: '👤' };
+    case 'follow_accepted': return { bg: 'rgba(72,196,104,0.12)',  color: '#48C468', badge: '✓' };
+    case 'bubble':          return { bg: 'rgba(255,107,157,0.12)', color: '#FF6B9D', badge: '🫧' };
+    case 'dm':              return { bg: 'rgba(80,160,255,0.12)',  color: '#50A0FF', badge: '💬' };
+    case 'event_reminder':  return { bg: 'rgba(255,180,0,0.12)',   color: '#FFB400', badge: '🔔' };
+    case 'reaction':        return { bg: 'rgba(230,57,70,0.10)',   color: '#E63946', badge: '❤️' };
+    case 'comment':         return { bg: 'rgba(255,160,64,0.12)',  color: '#FFA040', badge: '💬' };
   }
 }
 
@@ -173,13 +177,24 @@ export default function NotificationsPage() {
     e.stopPropagation();
     if (!user || !notif.userId) return;
 
+    // pending → accepted に更新
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('follows') as any)
+      .update({ status: 'accepted' })
+      .eq('follower_id', notif.userId)
+      .eq('following_id', user.id)
+      .eq('type', 'user')
+      .eq('status', 'pending');
+
+    // 逆方向を INSERT（accepted）→ notify_on_follow が follow_accepted 通知を相手に送る
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (supabase.from('follows') as any).insert({
-      follower_id:  notif.userId,
-      following_id: user.id,
+      follower_id:  user.id,
+      following_id: notif.userId,
       type:         'user',
       status:       'accepted',
     });
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (supabase.from('notifications') as any).update({ read: true }).eq('id', notif.id);
 
@@ -192,6 +207,17 @@ export default function NotificationsPage() {
   // ── フォロー拒否 ───────────────────────────────────────────────
   async function handleRejectFollow(notif: Notif, e: React.MouseEvent) {
     e.stopPropagation();
+    if (!user || !notif.userId) return;
+
+    // pending 申請行を削除
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('follows') as any)
+      .delete()
+      .eq('follower_id', notif.userId)
+      .eq('following_id', user.id)
+      .eq('type', 'user')
+      .eq('status', 'pending');
+
     await supabase.from('notifications').delete().eq('id', notif.id);
     setNotifs(prev => prev.filter(n => n.id !== notif.id));
   }
@@ -209,6 +235,7 @@ export default function NotificationsPage() {
   const displayed = notifs.filter(n => {
     if (filter === 'all') return true;
     if (filter === 'reaction') return n.type === 'reaction' || n.type === 'bubble';
+    if (filter === 'follow') return n.type === 'follow' || n.type === 'follow_request' || n.type === 'follow_accepted';
     return n.type === filter;
   });
   const unreadCount  = notifs.filter(n => !n.read).length;
@@ -335,7 +362,7 @@ export default function NotificationsPage() {
                   )}
 
                   {/* Follow: ✓ / × ボタン */}
-                  {notif.type === 'follow' && notif.userId && !isAccepted && (
+                  {notif.type === 'follow_request' && notif.userId && !isAccepted && (
                     <div className="flex gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={(e) => handleAcceptFollow(notif, e)}

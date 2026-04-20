@@ -11,6 +11,7 @@ import HashtagFilterBar from '@/components/HashtagFilterBar';
 import type { Post } from '@/lib/mockData';
 import { supabase } from '@/lib/supabase';
 import { RAINBOW } from '@/lib/rainbow';
+import { getFriends } from '@/lib/friendship';
 
 // ── 時間帯バブルカラー ───────────────────────────────────────────
 function getBubbleColors(): string[] {
@@ -1119,16 +1120,10 @@ export default function HomePage() {
   useEffect(() => {
     if (!user) return;
     const fetchFriendsPosts = async () => {
-      const { data: followData } = await (supabase as any)
-        .from('follows')
-        .select('following_id')
-        .eq('follower_id', user.id)
-        .eq('type', 'user')
-        .eq('status', 'accepted');
+      const friendProfiles = await getFriends(supabase as any, user.id);
+      if (friendProfiles.length === 0) return;
 
-      if (!followData || followData.length === 0) return;
-
-      const followingIds = (followData as any[]).map(f => f.following_id);
+      const followingIds = friendProfiles.map(p => p.id);
       const now = new Date().toISOString();
 
       const { data: postsData } = await (supabase as any)

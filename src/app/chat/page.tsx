@@ -6,6 +6,7 @@ import { useTranslations } from 'next-intl';
 import { type Conversation } from '@/lib/mockData';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { getFriends } from '@/lib/friendship';
 
 const RAINBOW = 'linear-gradient(to right, #7C6FE8 0%, #D455A8 18%, #E84040 36%, #E8A020 52%, #48C468 68%, #2890D8 84%, #7C6FE8 100%)'
 
@@ -131,33 +132,20 @@ export default function ChatPage() {
     return () => { cancelled = true; };
   }, [user?.id]);
 
-  // ── フレンドリスト取得 ──────────────────────────────────────────
+  // ── フレンドリスト取得（双方向）────────────────────────────────
   useEffect(() => {
     if (!user?.id) return;
-    (supabase as any)
-      .from('follows')
-      .select(`
-        following_id,
-        profiles!follows_following_id_fkey (
-          id, username, display_name, avatar_url
-        )
-      `)
-      .eq('follower_id', user.id)
-      .eq('type', 'user')
-      .eq('status', 'accepted')
-      .then(({ data, error }: any) => {
-        if (error) { console.error('フレンド取得エラー:', error); return; }
-        const list: Friend[] = (data ?? []).map((row: any) => {
-          const p = row.profiles;
-          return {
-            id:     p?.id ?? row.following_id,
-            avatar: p?.avatar_url   ?? '👤',
-            name:   p?.display_name ?? p?.username ?? 'Unknown',
-            handle: `@${p?.username ?? ''}`,
-          };
-        });
+    getFriends(supabase as any, user.id)
+      .then(profiles => {
+        const list: Friend[] = profiles.map(p => ({
+          id:     p.id,
+          avatar: p.avatar_url   ?? '👤',
+          name:   p.display_name ?? p.username ?? 'Unknown',
+          handle: `@${p.username ?? ''}`,
+        }));
         setFriends(list);
-      });
+      })
+      .catch(err => console.error('フレンド取得エラー:', err));
   }, [user?.id]);
 
   // ── 検索フィルター ──────────────────────────────────────────────
