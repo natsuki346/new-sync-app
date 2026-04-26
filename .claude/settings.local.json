@@ -81,7 +81,12 @@
       "Bash(git pull *)",
       "Bash(npx --yes next info)",
       "Bash(pkill -f \"next dev\")",
-      "Bash(taskkill /F /IM node.exe /T)"
+      "Bash(taskkill /F /IM node.exe /T)",
+      "Bash(supabase status *)",
+      "Bash(supabase projects *)",
+      "Bash(git diff *)",
+      "Bash(iconv -f UTF-16LE -t UTF-8 \"/c/Users/81908/sync-v5/src/lib/database.types.ts\")",
+      "PowerShell(Stop-Process *)"
     ]
   }
 }
