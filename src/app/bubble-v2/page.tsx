@@ -708,7 +708,7 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
   ];
 
   return (
-    <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', height: '100dvh', overflow: 'hidden', background: '#0a0a1a' }}>
+    <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: '#0a0a1a' }}>
 
       {/* ── 時間帯背景（bubble/page.tsx と同一） ── */}
       <div style={{ position: 'absolute', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
@@ -736,7 +736,7 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
       </div>
 
       {/* ── ヘッダー ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', flexShrink: 0, zIndex: 10 }}>
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', zIndex: 100 }}>
         <SyncLogo width={100} />
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: 'rgba(255,255,255,0.88)', fontWeight: 700 }}>
@@ -753,7 +753,7 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
       </div>
 
       {/* ── フィールド ── */}
-      <div ref={fieldRef} style={{ flex: 1, position: 'relative', overflow: 'hidden', minHeight: 0, zIndex: 10 }}>
+      <div ref={fieldRef} style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 10 }}>
         {ready && (
           <motion.div
             drag
@@ -833,8 +833,8 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
         </div>
       ))}
 
-      {/* ── 入力欄（送信ボタン付き） ── */}
-      <div style={{ flexShrink: 0, padding: '10px 16px 16px', background: 'rgba(10,10,26,0.88)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderTop: '0.5px solid rgba(255,255,255,0.07)', zIndex: 10 }}>
+      {/* ── 入力欄（キーボードが出ても固定） ── */}
+      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: '10px 16px', paddingBottom: 'max(16px, env(safe-area-inset-bottom))', background: 'rgba(10,10,26,0.92)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderTop: '0.5px solid rgba(255,255,255,0.07)', zIndex: 200 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
           <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, borderRadius: 22, padding: '8px 12px 8px 14px', background: inputText.trim() ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.07)', border: '1px solid rgba(124,111,232,0.35)', boxShadow: inputText.trim() ? '0 0 12px rgba(124,111,232,0.3)' : 'none', transition: 'box-shadow 0.25s ease, background 0.25s ease' }}>
             <input
