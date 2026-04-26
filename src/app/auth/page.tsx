@@ -189,20 +189,27 @@ export default function AuthPage() {
         </button>
       </form>
 
-      <div style={{ textAlign: 'center', marginTop: '16px' }}>
-        <button
-          onClick={() => { window.location.href = '/demo'; }}
+      <div style={{ textAlign: 'center', marginTop: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+        <a
+          href="/demo"
           style={{
-            background: 'none',
-            border: 'none',
             color: 'rgba(255,255,255,0.5)',
             fontSize: '14px',
-            cursor: 'pointer',
             textDecoration: 'underline',
           }}
         >
           デモとして見る →
-        </button>
+        </a>
+        <a
+          href="/bubble-v2"
+          style={{
+            color: 'rgba(255,255,255,0.5)',
+            fontSize: '14px',
+            textDecoration: 'underline',
+          }}
+        >
+          仮版を試す →
+        </a>
       </div>
     </div>
   );

@@ -30,7 +30,11 @@ export async function proxy(request: NextRequest) {
     '/chat', '/notifications', '/settings',
     '/liked', '/saved', '/qrcode', '/onboarding',
   ];
-  const isProtected = protectedPaths.some(path => pathname.startsWith(path));
+  // startsWith だと /bubble が /bubble-v2 にも誤マッチするため、
+  // 完全一致 or パス区切り以降への前方一致のみ許可する
+  const isProtected = protectedPaths.some(
+    path => pathname === path || pathname.startsWith(path + '/')
+  );
 
   // 未認証 → /auth
   if (!user && isProtected) {

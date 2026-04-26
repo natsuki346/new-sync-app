@@ -3,15 +3,19 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SyncLogo from '@/components/SyncLogo';
+import ReactionFloatingEffect from '@/components/ReactionFloatingEffect';
 
 // ── 定数 ────────────────────────────────────────────────────────────────
 
 const MAX_CHARS        = 15;
 const ONLINE           = 30;
 
-const MSG_CYCLE_MS     = 10_000;
-const BUBBLE_LIFETIME  = 10;   // 秒
+const BUBBLE_LIFETIME  = 10;    // 自分バブルの寿命（秒）
 const DANGER_THRESHOLD = 3;    // 残り3秒で危険演出
+// 他人バブルのタイミング
+const PERSON_BUBBLE_SHOW_MS  = 10_000;            // 表示時間 10秒
+const PERSON_BUBBLE_MIN_MS   = 10_000;            // 送信間隔 最小 10秒
+const PERSON_BUBBLE_RANGE_MS = 20_000;            // 送信間隔 幅 20秒（→最大 30秒）
 
 // ── 時間帯背景（bubble/page.tsxから転用） ───────────────────────────────
 
@@ -28,6 +32,12 @@ const getToD = (h: number): ToD =>
   h >= 5 && h < 10 ? 'morning' : h >= 10 && h < 17 ? 'day' : h >= 17 && h < 20 ? 'evening' : 'night';
 
 const makeId = () => Math.random().toString(36).slice(2, 9);
+
+// 他人バブルのカラフルな枠線色（インデックスで固定割り当て）
+const BUBBLE_COLORS = [
+  '#D455A8', '#20C8C8', '#48C468', '#7C6FE8',
+  '#E8A020', '#2890D8', '#E84040', '#E8C820',
+];
 
 function makeFloatData() {
   return {
@@ -87,17 +97,45 @@ function TapModal({ menu, onClose }: {
   menu:    TapMenu;
   onClose: () => void;
 }) {
+  const [flyEmoji, setFlyEmoji] = useState<{ emoji: string; x: number; y: number } | null>(null);
+
+  function handleReact(emoji: string, e: React.MouseEvent<HTMLButtonElement>) {
+    const r = e.currentTarget.getBoundingClientRect();
+    setFlyEmoji({ emoji, x: r.left + r.width / 2, y: r.top });
+    setTimeout(onClose, 650);
+  }
+
+  const vw     = typeof window !== 'undefined' ? window.innerWidth  : 390;
+  const vh     = typeof window !== 'undefined' ? window.innerHeight : 844;
+  const MARGIN = 10;
+  const CARD_H = 216;
+  let left = menu.clientX - ACTION_MENU_W / 2;
+  let top  = menu.clientY + 14;
+  if (top + CARD_H > vh - 20) top = menu.clientY - CARD_H - 14;
+  if (top < 56) top = 56;
+  left = Math.max(MARGIN, Math.min(left, vw - ACTION_MENU_W - MARGIN));
+
   return (
     <>
       {/* 透明オーバーレイ */}
       <div style={{ position: 'fixed', inset: 0, zIndex: 28 }} onClick={onClose} />
-      {/* カード本体 — 常に画面中央固定 */}
+      {/* リアクション絵文字フライアニメーション */}
+      {flyEmoji && (
+        <motion.div
+          style={{ position: 'fixed', left: flyEmoji.x, top: flyEmoji.y, fontSize: 28, pointerEvents: 'none', zIndex: 200, x: '-50%' }}
+          initial={{ y: 0, opacity: 1 }}
+          animate={{ y: -60, opacity: 0 }}
+          transition={{ duration: 0.6, ease: 'easeOut' }}
+        >
+          {flyEmoji.emoji}
+        </motion.div>
+      )}
+      {/* カード本体 — バブル近くに表示・画面端を超えない */}
       <div
         style={{
           position:             'fixed',
-          top:                  '50%',
-          left:                 '50%',
-          transform:            'translate(-50%, -50%)',
+          top,
+          left,
           width:                ACTION_MENU_W,
           zIndex:               29,
           background:           '#0d0d1a',
@@ -124,12 +162,12 @@ function TapModal({ menu, onClose }: {
           </div>
         </div>
 
-        {/* リアクション行 */}
+        {/* リアクション行（常に表示） */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
           {REACT_EMOJIS.map(emoji => (
             <button
               key={emoji}
-              onClick={onClose}
+              onClick={e => handleReact(emoji, e)}
               style={{ flex: 1, height: 44, border: '1px solid rgba(255,255,255,0.10)', borderRadius: 12, background: 'rgba(255,255,255,0.06)', fontSize: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', transition: 'transform 0.12s ease, background 0.12s ease' }}
               onPointerEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.13)'; (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.18)'; }}
               onPointerLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)'; (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'; }}
@@ -163,48 +201,189 @@ function TapModal({ menu, onClose }: {
 
 // ── 共有コンポーネント ────────────────────────────────────────────────────
 
-function SpeechBubble({ text }: { text: string }) {
+// SpeechBubble：bubble/page.tsx BubbleItem の外観をそのまま転用
+// isDanger で pururu、isLiked で 👍 ボタンのゴールドグロー
+function SpeechBubble({ text, emoji, borderColor, isDanger, isLiked, onReact, onBubbleTap }: {
+  text: string; emoji: string; borderColor: string;
+  isDanger?: boolean; isLiked?: boolean;
+  onReact?: () => void;
+  onBubbleTap?: (clientX: number, clientY: number) => void;
+}) {
   return (
-    <div style={{ position: 'absolute', bottom: 'calc(100% + 5px)', left: '50%', transform: 'translateX(-50%)', pointerEvents: 'none', zIndex: 5 }}>
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={text}
-          initial={{ opacity: 0, y: 2 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -2 }}
-          transition={{ duration: 0.35 }}
-          style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+    <div style={{ position: 'absolute', bottom: 'calc(100% + 12px)', left: '50%', transform: 'translateX(-50%)', zIndex: 5, whiteSpace: 'nowrap' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        {/* バブル本体タップ → モーダル（bubble/page.tsx BubbleItem と同一構造） */}
+        <div
+          onClick={e => { e.stopPropagation(); onBubbleTap?.(e.clientX, e.clientY); }}
+          style={{
+            position:             'relative',
+            display:              'flex',
+            alignItems:           'center',
+            gap:                  6,
+            padding:              '5px 8px 5px 5px',
+            background:           'rgba(255,255,255,0.08)',
+            borderRadius:         20,
+            border:               `1.5px solid ${borderColor}`,
+            boxShadow:            `inset 0 1px 2px rgba(255,255,255,0.15), 0 0 8px ${borderColor}55`,
+            animation:            isDanger ? 'pururu 0.4s ease-in-out infinite' : 'none',
+            backdropFilter:       'blur(2px)',
+            WebkitBackdropFilter: 'blur(2px)',
+            overflow:             'hidden',
+            cursor:               'pointer',
+            WebkitTapHighlightColor: 'transparent',
+          }}
         >
-          <div style={{ background: 'rgba(255,255,255,0.93)', borderRadius: 8, padding: '3px 7px', fontSize: 10, color: '#1a1a2e', fontWeight: 600, whiteSpace: 'nowrap', maxWidth: 90, overflow: 'hidden', textOverflow: 'ellipsis', boxShadow: '0 2px 8px rgba(0,0,0,0.22)', lineHeight: 1.5 }}>
-            {text}
+          {/* 光沢ハイライト */}
+          <div style={{ position: 'absolute', top: 3, left: 6, width: '25%', height: '50%', borderRadius: '50%', background: 'linear-gradient(135deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 100%)', pointerEvents: 'none' }} />
+          {/* 左端：ミームアイコン */}
+          <div style={{ width: 24, height: 24, borderRadius: '50%', background: `${borderColor}22`, border: `1px solid ${borderColor}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0, lineHeight: 1 }}>
+            {emoji}
           </div>
-          <div style={{ width: 0, height: 0, borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderTop: '5px solid rgba(255,255,255,0.93)' }} />
-        </motion.div>
-      </AnimatePresence>
+          {/* テキスト */}
+          <span style={{ flex: 1, minWidth: 0, fontSize: 11, fontWeight: 600, color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 72, letterSpacing: '0.01em' }}>
+            {text}
+          </span>
+          {/* 右端：👍ボタン（タップで即リアクション） */}
+          <div
+            onClick={e => { e.stopPropagation(); onReact?.(); }}
+            style={{
+              marginLeft:  2, width: 26, height: 26, borderRadius: '50%',
+              background:  isLiked ? 'rgba(255,26,26,0.28)' : 'rgba(255,255,255,0.06)',
+              border:      isLiked ? '1px solid rgba(255,26,26,0.60)' : '1px solid rgba(255,255,255,0.14)',
+              boxShadow:   isLiked ? '0 0 8px rgba(255,26,26,0.50)' : 'none',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, flexShrink: 0,
+              cursor: 'pointer', transition: 'background 0.2s, border 0.2s, box-shadow 0.2s',
+              WebkitTapHighlightColor: 'transparent',
+            }}
+          >
+            👍
+          </div>
+        </div>
+        {/* バブルの尾 */}
+        <div style={{ width: 0, height: 0, borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderTop: `5px solid ${borderColor}`, pointerEvents: 'none' }} />
+      </div>
     </div>
   );
 }
 
+// PersonCircle：bubble/page.tsx BubbleItem のアニメーション一式を転用
+// ・bubbleSpawn（出現）・pururu（危険時震え）・bubblePop + popBurst（消滅）
+// ・👍ボタン → 即リアクション / バブル本体 → モーダル / ミーム → モーダル
 interface PersonCircleProps {
   emoji: string; size: number; opacity: number;
   floatDuration: number; floatDelay: number;
-  msg: string; x: number; y: number;
-  onTap: (clientX: number, clientY: number) => void;
+  messages: [string, string, string];
+  x: number; y: number;
+  borderColor: string;
+  onBubbleTap: (clientX: number, clientY: number, text: string) => void;
+  onMemeTap:   (clientX: number, clientY: number) => void;
+  onPop:       (x: number, y: number) => void;
 }
 
-function PersonCircle({ emoji, size, opacity, floatDuration, floatDelay, msg, x, y, onTap }: PersonCircleProps) {
+function PersonCircle({ emoji, size, opacity, floatDuration, floatDelay, messages, x, y, borderColor, onBubbleTap, onMemeTap, onPop }: PersonCircleProps) {
+  const [activeBubble, setActiveBubble] = useState<string | null>(null);
+  const [isNew,        setIsNew]        = useState(false);
+  const [isDanger,     setIsDanger]     = useState(false);
+  const [isLiked,      setIsLiked]      = useState(false);
+  const [floatEmojis,  setFloatEmojis]  = useState<{ id: number; dx: number; sz: number; delay: number }[]>([]);
+
+  const bubbleWrapperRef = useRef<HTMLDivElement>(null);
+  const floatIdRef       = useRef(0);
+
+  // ランダムタイミングでバブルを送信・ライフサイクル管理
+  useEffect(() => {
+    let sendTimer: ReturnType<typeof setTimeout>;
+    let isNewTimer: ReturnType<typeof setTimeout>;
+    let dangerTimer: ReturnType<typeof setTimeout>;
+    let popTimer: ReturnType<typeof setTimeout>;
+    let clearTimer: ReturnType<typeof setTimeout>;
+
+    function scheduleNext() {
+      sendTimer = setTimeout(() => {
+        const msg = messages[Math.floor(Math.random() * messages.length)];
+        setActiveBubble(msg);
+        setIsNew(true);
+        isNewTimer = setTimeout(() => setIsNew(false), 400);
+        dangerTimer = setTimeout(() => setIsDanger(true), PERSON_BUBBLE_SHOW_MS - DANGER_THRESHOLD * 1000);
+
+        // 寿命後 bubblePop → pop burst → setActiveBubble(null)
+        popTimer = setTimeout(() => {
+          const el = bubbleWrapperRef.current;
+          if (el) {
+            el.style.animation    = 'bubblePop 0.3s ease-out forwards';
+            el.style.pointerEvents = 'none';
+            const r = el.getBoundingClientRect();
+            onPop(r.left + r.width / 2, r.top + r.height / 2);
+          }
+          clearTimer = setTimeout(() => {
+            setActiveBubble(null);
+            setIsDanger(false);
+            scheduleNext();
+          }, 350);
+        }, PERSON_BUBBLE_SHOW_MS);
+      }, PERSON_BUBBLE_MIN_MS + Math.random() * PERSON_BUBBLE_RANGE_MS);
+    }
+
+    const initTimer = setTimeout(scheduleNext, Math.random() * 12000);
+    return () => {
+      [initTimer, sendTimer, isNewTimer, dangerTimer, popTimer, clearTimer]
+        .forEach(t => clearTimeout(t));
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 👍 即リアクション（bubble/page.tsx handleQuickLike と同一）
+  function handleReact() {
+    setIsLiked(true);
+    setTimeout(() => setIsLiked(false), 500);
+    const newEmojis = Array.from({ length: 3 }, (_, i) => ({
+      id: floatIdRef.current++, dx: (Math.random() - 0.5) * 24,
+      sz: 16 + Math.random() * 8, delay: i * 60,
+    }));
+    setFloatEmojis(prev => [...prev, ...newEmojis]);
+    const ids = new Set(newEmojis.map(e => e.id));
+    setTimeout(() => setFloatEmojis(prev => prev.filter(e => !ids.has(e.id))), 1400);
+  }
+
   return (
-    <div
-      style={{ position: 'absolute', left: x - size / 2, top: y - size / 2, width: size, height: size, opacity, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
-      onClick={e => onTap(e.clientX, e.clientY)}
-    >
+    <div style={{ position: 'absolute', left: x - size / 2, top: y - size / 2, width: size, height: size, opacity }}>
+      {/* 浮遊アニメーション（-15px ↕ mirror） */}
       <motion.div
         animate={{ y: -15 }}
         transition={{ duration: floatDuration, repeat: Infinity, repeatType: 'mirror', ease: 'easeInOut', delay: floatDelay }}
         style={{ position: 'relative', width: size, height: size }}
       >
-        <SpeechBubble text={msg} />
-        <div style={{ width: size, height: size, borderRadius: '50%', background: 'rgba(255,255,255,0.07)', border: '1.5px solid rgba(255,255,255,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.48, boxShadow: '0 2px 10px rgba(0,0,0,0.3)' }}>
+        {/* バブル（アクティブ時のみ）— ref で bubblePop を直接適用 */}
+        {activeBubble && (
+          <div ref={bubbleWrapperRef}>
+            {/* 出現アニメーション + 危険時グロー */}
+            <div style={{
+              animation:  isNew ? 'bubbleSpawn 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards' : 'none',
+              filter:     isDanger ? 'drop-shadow(0 0 8px rgba(255,255,255,0.9))' : 'none',
+              transition: 'filter 0.3s ease',
+            }}>
+              <SpeechBubble
+                text={activeBubble} emoji={emoji}
+                borderColor={borderColor} isDanger={isDanger} isLiked={isLiked}
+                onReact={handleReact}
+                onBubbleTap={(cx, cy) => onBubbleTap(cx, cy, activeBubble)}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* emojiFloat */}
+        {floatEmojis.map(fe => (
+          <div key={fe.id} style={{ position: 'absolute', left: size / 2 + fe.dx, top: -size * 0.3, fontSize: fe.sz, pointerEvents: 'none', zIndex: 20, animation: `emojiFloat 1.2s ${fe.delay}ms ease-out forwards` }}>
+            👍
+          </div>
+        ))}
+
+        {/* ミームアイコン円（タップ → モーダル DM/プロフィール） */}
+        <div
+          onClick={e => { e.stopPropagation(); onMemeTap(e.clientX, e.clientY); }}
+          style={{ width: size, height: size, borderRadius: '50%', background: 'rgba(255,255,255,0.07)', border: '1.5px solid rgba(255,255,255,0.16)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: size * 0.48, boxShadow: '0 2px 10px rgba(0,0,0,0.3)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
+        >
           {emoji}
         </div>
       </motion.div>
@@ -420,7 +599,6 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
 
   // 既存 state
   const [inputText, setInputText] = useState('');
-  const [msgCycle,  setMsgCycle]  = useState(0);
   const [fieldSize, setFieldSize] = useState({ w: 0, h: 0 });
   const fieldRef = useRef<HTMLDivElement>(null);
 
@@ -443,11 +621,6 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
     return () => ro.disconnect();
   }, []);
 
-  // メッセージサイクル
-  useEffect(() => {
-    const id = setInterval(() => setMsgCycle(n => n + 1), MSG_CYCLE_MS);
-    return () => clearInterval(id);
-  }, []);
 
   // 自分ミームのアニメーション
   const selfFloatData = useRef(makeFloatData()).current;
@@ -455,9 +628,12 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
   // タップモーダル
   const [tapMenu, setTapMenu] = useState<TapMenu | null>(null);
 
-  function handlePersonTap(p: typeof PEOPLE[0], msg: string, clientX: number, clientY: number) {
-    setTapMenu({ personId: p.id, personEmoji: p.emoji, text: msg, clientX, clientY });
+  function openModal(p: typeof PEOPLE[0], clientX: number, clientY: number, text: string) {
+    setTapMenu({ personId: p.id, personEmoji: p.emoji, text, clientX, clientY });
   }
+
+  // ReactionFloatingEffect 用（bubble/page.tsx と同一）
+  const [postCount, setPostCount] = useState(0);
 
   // アンマウント時タイマークリーンアップ
   useEffect(() => {
@@ -482,6 +658,7 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
     setTimeout(() => setPopBursts(prev => prev.filter(b => b.id !== burstId)), 700);
   }
 
+  // 自分投稿後に他人からリアクションが飛んでくるモック演出
   function handleSend() {
     if (!inputText.trim()) return;
     const text     = inputText.trim();
@@ -499,12 +676,15 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
       (BUBBLE_LIFETIME - DANGER_THRESHOLD) * 1000,
     );
 
+    // ReactionFloatingEffect をトリガー（bubble/page.tsx の postCount と同一）
+    setPostCount(n => n + 1);
+
     // BUBBLE_LIFETIME 秒後にパチン
     popTimerRef.current = setTimeout(() => {
       const el    = selfBubbleElRef.current;
       const field = fieldRef.current;
       if (el) {
-        el.style.animation    = 'bubblePop 0.3s ease-out forwards';
+        el.style.animation    = 'bubbleFade 0.3s ease-out forwards';
         el.style.pointerEvents = 'none';
         if (field) triggerPopBurst(field.offsetWidth / 2, field.offsetHeight / 2 - SELF_SIZE / 2);
       }
@@ -520,8 +700,8 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
   // 元の2リング配置（最初の実装と同じ）
   const cx = w / 2;
   const cy = h / 2;
-  const r1 = Math.min(cx, cy) * 0.68;
-  const r2 = Math.min(cx, cy) * 1.08;
+  const r1 = Math.min(cx, cy) * 0.82;   // Ring1 隣接距離 ≈ 95px → ~116px
+  const r2 = Math.min(cx, cy) * 1.35;   // Ring2 隣接距離 ≈ 67px → ~  84px（半径拡大で密度解消）
   const positions = [
     ...Array.from({ length: 10 }, (_, i) => { const a = (i/10)*Math.PI*2 - Math.PI/2; return { x: cx + r1*Math.cos(a), y: cy + r1*Math.sin(a), ring: 1 as const }; }),
     ...Array.from({ length: 19 }, (_, i) => { const a = (i/19)*Math.PI*2 - Math.PI/2; return { x: cx + r2*Math.cos(a), y: cy + r2*Math.sin(a), ring: 2 as const }; }),
@@ -584,17 +764,21 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
           >
             {/* 29人（元の2リング配置） */}
             {PEOPLE.map((p, i) => {
-              const pos     = positions[i];
-              const size    = pos.ring === 1 ? 56 : 38;
-              const opacity = pos.ring === 1 ? 0.88 : 0.62;
-              const bd      = blinkData.current[i];
+              const pos         = positions[i];
+              const size        = pos.ring === 1 ? 56 : 38;
+              const opacity     = pos.ring === 1 ? 0.88 : 0.62;
+              const bd          = blinkData.current[i];
+              const borderColor = BUBBLE_COLORS[i % BUBBLE_COLORS.length];
               return (
                 <PersonCircle key={p.id} emoji={p.emoji}
                   size={size} opacity={opacity}
                   floatDuration={bd.floatDuration} floatDelay={bd.floatDelay}
-                  msg={p.messages[msgCycle % p.messages.length]}
+                  messages={p.messages}
                   x={pos.x} y={pos.y}
-                  onTap={(tapX, tapY) => handlePersonTap(p, p.messages[msgCycle % p.messages.length], tapX, tapY)}
+                  borderColor={borderColor}
+                  onBubbleTap={(cx, cy, text) => openModal(p, cx, cy, text)}
+                  onMemeTap={(cx, cy) => openModal(p, cx, cy, p.messages[0])}
+                  onPop={(bx, by) => triggerPopBurst(bx, by)}
                 />
               );
             })}
@@ -627,6 +811,7 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
                 selfSize={SELF_SIZE}
               />
             )}
+
           </motion.div>
         )}
       </div>
@@ -686,10 +871,19 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
           70%  { transform: scale(1.2); opacity: 1;   }
           100% { transform: scale(1.0); opacity: 1;   }
         }
+        @keyframes bubbleFade {
+          from { opacity: 1; scale: 1;   }
+          to   { opacity: 0; scale: 0.8; }
+        }
         @keyframes bubblePop {
           0%   { scale: 1;   opacity: 1;    }
           35%  { scale: 1.3; opacity: 0.85; }
           100% { scale: 0;   opacity: 0;    }
+        }
+        @keyframes emojiFloat {
+          0%   { transform: translateY(0)      scale(1);   opacity: 1;   }
+          60%  { transform: translateY(-60px)  scale(1.2); opacity: 0.9; }
+          100% { transform: translateY(-120px) scale(0.8); opacity: 0;   }
         }
         @keyframes pururu {
           0%, 100% { transform: translate(0, 0) scale(1); }
@@ -709,6 +903,13 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
         input::placeholder { color: rgba(255,255,255,0.28); }
         button:active { transform: scale(0.93); }
       `}</style>
+
+      {/* インスタライブ型リアクションエフェクト（bubble/page.tsx と同一） */}
+      <ReactionFloatingEffect
+        isActive={true}
+        onBurst={(x, y) => triggerPopBurst(x, y)}
+        triggerCount={postCount}
+      />
     </div>
   );
 }
