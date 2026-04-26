@@ -49,6 +49,9 @@ export async function POST(req: NextRequest) {
     });
 
     const item = response.data?.[0];
+    if (!item) {
+      return NextResponse.json({ error: 'No image returned' }, { status: 500 });
+    }
     if (item.b64_json) {
       return NextResponse.json({ url: `data:image/png;base64,${item.b64_json}` });
     }
