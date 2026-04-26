@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
       size: '1024x1024',
     });
 
-    const item = response.data[0];
+    const item = response.data?.[0];
     if (item.b64_json) {
       return NextResponse.json({ url: `data:image/png;base64,${item.b64_json}` });
     }
