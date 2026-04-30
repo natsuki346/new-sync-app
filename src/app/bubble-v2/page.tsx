@@ -1,9 +1,13 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import SyncLogo from '@/components/SyncLogo';
 import ReactionFloatingEffect from '@/components/ReactionFloatingEffect';
+import BottomNav from '@/components/BottomNav';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 // ── 定数 ────────────────────────────────────────────────────────────────
 
@@ -278,9 +282,10 @@ interface PersonCircleProps {
   onBubbleTap: (clientX: number, clientY: number, text: string) => void;
   onMemeTap:   (clientX: number, clientY: number) => void;
   onPop:       (x: number, y: number) => void;
+  externalBubble?: { text: string; id: string } | null;
 }
 
-function PersonCircle({ emoji, size, opacity, floatDuration, floatDelay, messages, x, y, borderColor, onBubbleTap, onMemeTap, onPop }: PersonCircleProps) {
+function PersonCircle({ emoji, size, opacity, floatDuration, floatDelay, messages, x, y, borderColor, onBubbleTap, onMemeTap, onPop, externalBubble }: PersonCircleProps) {
   const [activeBubble, setActiveBubble] = useState<string | null>(null);
   const [isNew,        setIsNew]        = useState(false);
   const [isDanger,     setIsDanger]     = useState(false);
@@ -289,6 +294,18 @@ function PersonCircle({ emoji, size, opacity, floatDuration, floatDelay, message
 
   const bubbleWrapperRef = useRef<HTMLDivElement>(null);
   const floatIdRef       = useRef(0);
+
+  // Realtime受信バブルを一時的に表示
+  useEffect(() => {
+    if (!externalBubble) return;
+    setActiveBubble(externalBubble.text);
+    setIsNew(true);
+    setIsDanger(false);
+    const t1 = setTimeout(() => setIsNew(false), 400);
+    const t2 = setTimeout(() => setActiveBubble(null), PERSON_BUBBLE_SHOW_MS);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalBubble?.id]);
 
   // ランダムタイミングでバブルを送信・ライフサイクル管理
   useEffect(() => {
@@ -459,7 +476,7 @@ function SelfBubbleView({ text, danger, divRef, cx, cy, selfSize }: SelfBubbleVi
 
 // ── STEP 1: ミーム生成画面 ───────────────────────────────────────────────
 
-function CreateScreen({ onConfirm }: { onConfirm: (url: string) => void }) {
+function CreateScreen({ onConfirm, onBack }: { onConfirm: (url: string) => void; onBack?: () => void }) {
   const [file, setFile]           = useState<File | null>(null);
   const [preview, setPreview]     = useState<string | null>(null);
   const [generated, setGenerated] = useState<string | null>(null);
@@ -499,7 +516,15 @@ function CreateScreen({ onConfirm }: { onConfirm: (url: string) => void }) {
   const canGenerate = !!file && !loading && !generated;
 
   return (
-    <div style={{ height: '100dvh', background: '#0a0a1a', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 28px', gap: 28, overflow: 'hidden' }}>
+    <div style={{ position: 'relative', height: '100dvh', background: '#0a0a1a', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 28px', gap: 28, overflow: 'hidden' }}>
+      {onBack && (
+        <button
+          onClick={onBack}
+          style={{ position: 'absolute', top: 20, left: 20, background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', fontSize: 24, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
+        >
+          ←
+        </button>
+      )}
       <SyncLogo width={96} />
 
       <div style={{ textAlign: 'center' }}>
@@ -578,7 +603,8 @@ interface PopBurst {
   particles: { id: number; dx: string; dy: string; size: number }[];
 }
 
-function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChangeMeme: () => void }) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile }: { selfImage: string; onChangeMeme: () => void; user: any; profile: any }) {
   // 時間帯
   const [tod, setTod] = useState<ToD>(() => getToD(new Date().getHours()));
 
@@ -614,16 +640,25 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
   useEffect(() => {
     const el = fieldRef.current;
     if (!el) return;
-    const update = () => setFieldSize({ w: el.offsetWidth, h: el.offsetHeight });
+    const update = () => {
+      const w = el.offsetWidth || window.innerWidth;
+      const h = el.offsetHeight || window.innerHeight;
+      setFieldSize({ w, h });
+    };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
-    return () => ro.disconnect();
+    // フォールバック：100ms後に再取得
+    const t = setTimeout(update, 100);
+    return () => { ro.disconnect(); clearTimeout(t); };
   }, []);
 
 
   // 自分ミームのアニメーション
   const selfFloatData = useRef(makeFloatData()).current;
+
+  // Realtimeで受信した他人バブル（PersonCircle index → bubble）
+  const [receivedBubbles, setReceivedBubbles] = useState<Record<number, { text: string; id: string } | null>>({});
 
   // タップモーダル
   const [tapMenu, setTapMenu] = useState<TapMenu | null>(null);
@@ -634,6 +669,37 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
 
   // ReactionFloatingEffect 用（bubble/page.tsx と同一）
   const [postCount, setPostCount] = useState(0);
+
+  // Realtime: 他ユーザーのバブルをリアルタイム受信
+  useEffect(() => {
+    if (!user) return;
+
+    const channel = supabase
+      .channel('bubbles-realtime-v2')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'bubbles' },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        async (payload) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const row = (payload.new as any);
+          if (row.user_id === user.id) return;
+          if (row.expires_at && new Date(row.expires_at) < new Date()) return;
+
+          const idx = Math.floor(Math.random() * PEOPLE.length);
+          const rid = makeId();
+          setReceivedBubbles(prev => ({ ...prev, [idx]: { text: row.content, id: rid } }));
+          setTimeout(() => setReceivedBubbles(prev => {
+            const next = { ...prev };
+            if (next[idx]?.id === rid) next[idx] = null;
+            return next;
+          }), PERSON_BUBBLE_SHOW_MS + 500);
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user]);
 
   // アンマウント時タイマークリーンアップ
   useEffect(() => {
@@ -658,11 +724,27 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
     setTimeout(() => setPopBursts(prev => prev.filter(b => b.id !== burstId)), 700);
   }
 
-  // 自分投稿後に他人からリアクションが飛んでくるモック演出
-  function handleSend() {
+  async function handleSend() {
     if (!inputText.trim()) return;
     const text     = inputText.trim();
     const bubbleId = makeId();
+
+    // AIスキャン（ブロック判定）
+    try {
+      const scanRes = await fetch('/api/scan-post', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ text }),
+      });
+      const { blocked, reason } = await scanRes.json();
+      if (blocked) {
+        alert(`投稿できません：${reason}`);
+        return;
+      }
+    } catch (e) {
+      console.error('[bubbleScan] スキャンエラー:', e);
+    }
+
     setInputText('');
 
     if (dangerTimerRef.current) clearTimeout(dangerTimerRef.current);
@@ -670,21 +752,18 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
     setSelfBubbleDanger(false);
     setSelfBubble({ id: bubbleId, text });
 
-    // 残り DANGER_THRESHOLD 秒で危険演出
     dangerTimerRef.current = setTimeout(
       () => setSelfBubbleDanger(true),
       (BUBBLE_LIFETIME - DANGER_THRESHOLD) * 1000,
     );
 
-    // ReactionFloatingEffect をトリガー（bubble/page.tsx の postCount と同一）
     setPostCount(n => n + 1);
 
-    // BUBBLE_LIFETIME 秒後にパチン
     popTimerRef.current = setTimeout(() => {
       const el    = selfBubbleElRef.current;
       const field = fieldRef.current;
       if (el) {
-        el.style.animation    = 'bubbleFade 0.3s ease-out forwards';
+        el.style.animation     = 'bubbleFade 0.3s ease-out forwards';
         el.style.pointerEvents = 'none';
         if (field) triggerPopBurst(field.offsetWidth / 2, field.offsetHeight / 2 - SELF_SIZE / 2);
       }
@@ -693,6 +772,31 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
         setSelfBubbleDanger(false);
       }, 350);
     }, BUBBLE_LIFETIME * 1000);
+
+    // Supabaseに保存（ログイン済みのみ）
+    if (user) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: profileGps } = await (supabase as any)
+        .from('profiles')
+        .select('lat, lng')
+        .eq('id', user.id)
+        .single();
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase.from('bubbles') as any).insert({
+        user_id:            user.id,
+        content:            text,
+        hashtags:           [],
+        color:              null,
+        session_id:         null,
+        is_offline_created: false,
+        expires_at:         new Date(Date.now() + BUBBLE_LIFETIME * 1000).toISOString(),
+        lat:                profileGps?.lat ?? null,
+        lng:                profileGps?.lng ?? null,
+        radius:             50,
+      });
+      if (error) console.error('[bubble-v2] insert error:', error);
+    }
   }
 
   const SELF_SIZE = 68;
@@ -779,6 +883,7 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
                   onBubbleTap={(cx, cy, text) => openModal(p, cx, cy, text)}
                   onMemeTap={(cx, cy) => openModal(p, cx, cy, p.messages[0])}
                   onPop={(bx, by) => triggerPopBurst(bx, by)}
+                  externalBubble={receivedBubbles[i] ?? null}
                 />
               );
             })}
@@ -834,29 +939,32 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
       ))}
 
       {/* ── 入力欄（キーボードが出ても固定） ── */}
-      <div style={{ position: 'fixed', bottom: 0, left: 0, right: 0, padding: '10px 16px', paddingBottom: 'max(16px, env(safe-area-inset-bottom))', background: 'rgba(10,10,26,0.92)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderTop: '0.5px solid rgba(255,255,255,0.07)', zIndex: 200 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, borderRadius: 22, padding: '8px 12px 8px 14px', background: inputText.trim() ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.07)', border: '1px solid rgba(124,111,232,0.35)', boxShadow: inputText.trim() ? '0 0 12px rgba(124,111,232,0.3)' : 'none', transition: 'box-shadow 0.25s ease, background 0.25s ease' }}>
-            <input
-              type="text"
-              value={inputText}
-              onChange={e => setInputText(e.target.value.slice(0, MAX_CHARS))}
-              onKeyDown={e => e.key === 'Enter' && handleSend()}
-              placeholder="今どうしてる？..."
-              style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 14, color: '#fff' }}
-            />
-            <span style={{ fontSize: 11, flexShrink: 0, fontVariantNumeric: 'tabular-nums', color: inputText.length >= MAX_CHARS ? '#e63946' : 'rgba(255,255,255,0.28)' }}>
-              {MAX_CHARS - inputText.length}
-            </span>
+      <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 390, zIndex: 200, background: 'rgba(10,10,26,0.92)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderTop: '0.5px solid rgba(255,255,255,0.07)' }}>
+        {/* 入力欄 */}
+        <div style={{ padding: '10px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, borderRadius: 22, padding: '8px 12px 8px 14px', background: inputText.trim() ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.07)', border: '1px solid rgba(124,111,232,0.35)', boxShadow: inputText.trim() ? '0 0 12px rgba(124,111,232,0.3)' : 'none', transition: 'box-shadow 0.25s ease, background 0.25s ease' }}>
+              <input
+                type="text"
+                value={inputText}
+                onChange={e => setInputText(e.target.value.slice(0, MAX_CHARS))}
+                onKeyDown={e => e.key === 'Enter' && handleSend()}
+                placeholder="今どうしてる？..."
+                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 14, color: '#fff' }}
+              />
+              <span style={{ fontSize: 11, flexShrink: 0, fontVariantNumeric: 'tabular-nums', color: inputText.length >= MAX_CHARS ? '#e63946' : 'rgba(255,255,255,0.28)' }}>
+                {MAX_CHARS - inputText.length}
+              </span>
+            </div>
+            {/* 送信ボタン（bubble/page.tsx と同一デザイン） */}
+            <button
+              onClick={handleSend}
+              disabled={!inputText.trim()}
+              style={{ width: 40, height: 40, borderRadius: '50%', border: '1.5px solid rgba(255,255,255,0.6)', cursor: inputText.trim() ? 'pointer' : 'default', background: 'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.8), rgba(255,255,255,0.1)), linear-gradient(135deg, #FF6B6B, #FF8E53, #FFD93D, #6BCB77, #4D96FF, #9B59B6)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', flexShrink: 0, boxShadow: '0 4px 15px rgba(150,100,255,0.4), inset 0 1px 0 rgba(255,255,255,0.6)', opacity: inputText.trim() ? 1 : 0.35, fontSize: 18, WebkitTapHighlightColor: 'transparent' }}
+            >
+              🫧
+            </button>
           </div>
-          {/* 送信ボタン（bubble/page.tsx と同一デザイン） */}
-          <button
-            onClick={handleSend}
-            disabled={!inputText.trim()}
-            style={{ width: 40, height: 40, borderRadius: '50%', border: '1.5px solid rgba(255,255,255,0.6)', cursor: inputText.trim() ? 'pointer' : 'default', background: 'radial-gradient(circle at 30% 30%, rgba(255,255,255,0.8), rgba(255,255,255,0.1)), linear-gradient(135deg, #FF6B6B, #FF8E53, #FFD93D, #6BCB77, #4D96FF, #9B59B6)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', flexShrink: 0, boxShadow: '0 4px 15px rgba(150,100,255,0.4), inset 0 1px 0 rgba(255,255,255,0.6)', opacity: inputText.trim() ? 1 : 0.35, fontSize: 18, WebkitTapHighlightColor: 'transparent' }}
-          >
-            🫧
-          </button>
         </div>
       </div>
 
@@ -919,11 +1027,19 @@ function BubbleScreen({ selfImage, onChangeMeme }: { selfImage: string; onChange
 const MEME_KEY = 'sync_meme_image';
 
 export default function BubbleV2Page() {
+  const router = useRouter();
+  const { user, profile, loading } = useAuth();
   const [step,      setStep]      = useState<'create' | 'bubble' | null>(null);
   const [memeImage, setMemeImage] = useState<string>('');
 
-  // 起動時に localStorage を確認
+  // 未ログイン時は /auth にリダイレクト
   useEffect(() => {
+    if (loading) return;
+    if (!user) {
+      router.replace('/auth');
+      return;
+    }
+    // ユーザー確認後に localStorage を確認して step を初期化
     const saved = localStorage.getItem(MEME_KEY);
     if (saved) {
       setMemeImage(saved);
@@ -931,7 +1047,7 @@ export default function BubbleV2Page() {
     } else {
       setStep('create');
     }
-  }, []);
+  }, [loading, user, router]);
 
   function handleConfirm(url: string) {
     localStorage.setItem(MEME_KEY, url);
@@ -941,23 +1057,24 @@ export default function BubbleV2Page() {
 
   function handleChangeMeme() {
     localStorage.removeItem(MEME_KEY);
-    setMemeImage('');
     setStep('create');
   }
 
-  if (!step) return <div style={{ height: '100dvh', background: '#0a0a1a' }} />;
+  if (loading || !user || !step) return <div style={{ height: '100dvh', background: '#0a0a1a' }} />;
 
   return (
-    <AnimatePresence mode="wait">
-      {step === 'create' ? (
-        <motion.div key="create" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.3 }} style={{ height: '100dvh' }}>
-          <CreateScreen onConfirm={handleConfirm} />
-        </motion.div>
-      ) : (
-        <motion.div key="bubble" initial={{ opacity: 0, scale: 1.04 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.35 }} style={{ height: '100dvh' }}>
-          <BubbleScreen selfImage={memeImage} onChangeMeme={handleChangeMeme} />
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <div style={{ position: 'fixed', top: 0, bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 390, overflow: 'hidden', zIndex: 0 }}>
+      <AnimatePresence mode="wait">
+        {step === 'create' ? (
+          <motion.div key="create" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.3 }} style={{ height: '100dvh' }}>
+            <CreateScreen onConfirm={handleConfirm} onBack={memeImage ? () => setStep('bubble') : undefined} />
+          </motion.div>
+        ) : (
+          <motion.div key="bubble" initial={{ opacity: 0, scale: 1.04 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.35 }} style={{ height: '100dvh' }}>
+            <BubbleScreen selfImage={memeImage} onChangeMeme={handleChangeMeme} user={user} profile={profile} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }

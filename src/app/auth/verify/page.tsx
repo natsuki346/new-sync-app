@@ -83,7 +83,7 @@ export default function VerifyPage() {
           .single();
 
         if (profile?.username) {
-          window.location.href = '/home';
+          window.location.href = '/bubble-v2';
         } else {
           window.location.href = '/auth/username';
         }

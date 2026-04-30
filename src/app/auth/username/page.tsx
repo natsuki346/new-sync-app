@@ -33,7 +33,7 @@ export default function UsernamePage() {
   useEffect(() => {
     if (authLoading) return;
     if (!user) { router.replace('/auth'); return; }
-    if (profile?.username) { router.replace('/home'); }
+    if (profile?.username) { router.replace('/bubble-v2'); }
   }, [authLoading, user, profile, router]);
 
   const [username,  setUsername]  = useState('');

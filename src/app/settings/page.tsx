@@ -524,6 +524,17 @@ export default function SettingsPage() {
     }
   };
 
+  // ミーム画像
+  const [memeImage, setMemeImage] = useState<string | null>(null);
+  useEffect(() => {
+    setMemeImage(localStorage.getItem('sync_meme_image'));
+  }, []);
+
+  function handleChangeMeme() {
+    localStorage.removeItem('sync_meme_image');
+    router.push('/bubble-v2');
+  }
+
   // テーマ検出
   const [isDark, setIsDark] = useState(true);
 
@@ -726,6 +737,47 @@ export default function SettingsPage() {
 
       {/* ── スクロールエリア ── */}
       <div style={{ flex: 1, padding: '4px 16px 40px' }}>
+
+        {/* ── ミーム ── */}
+        <SectionHeader icon="🎭" title="ミーム" />
+        <div style={{ ...cardStyle }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px', background: 'var(--surface)' }}>
+            {/* サークルプレビュー */}
+            <div style={{
+              width: 80, height: 80, borderRadius: '50%', flexShrink: 0,
+              border: '2px solid rgba(124,111,232,0.5)',
+              background: 'rgba(124,111,232,0.10)',
+              overflow: 'hidden',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              {memeImage ? (
+                <img src={memeImage} alt="ミーム" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>未設定</span>
+              )}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--foreground)', marginBottom: 4 }}>
+                {memeImage ? '設定済み' : '未設定'}
+              </p>
+              <p style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.4 }}>
+                Bubble v2 で使用するあなたのアイコン
+              </p>
+            </div>
+            <button
+              onClick={handleChangeMeme}
+              style={{
+                fontSize: 12, fontWeight: 600, padding: '7px 14px',
+                borderRadius: 20, border: '1.5px solid #7C6FE8',
+                background: 'rgba(124,111,232,0.12)', color: '#7C6FE8',
+                cursor: 'pointer', flexShrink: 0,
+                WebkitTapHighlightColor: 'transparent',
+              }}
+            >
+              {memeImage ? '変更する' : '作成する'}
+            </button>
+          </div>
+        </div>
 
         {/* ① ログインと連絡先情報 */}
         <SectionHeader icon="👤" title={t('loginContact')} />

@@ -1439,7 +1439,7 @@ export default function BubblePage() {
   // ── レンダリング ──────────────────────────────────────────────────────
 
   return (
-    <div style={{ position:"relative", display:"flex", flexDirection:"column", height:"100dvh", overflow:"hidden", background: "#0d0d1a" }}>
+    <div style={{ position:"relative", display:"flex", flexDirection:"column", height:"100dvh", overflow:"hidden", background: "#0d0d1a", maxWidth: 390, margin: "0 auto" }}>
 
       {/* ヘッダー */}
       <header ref={headerRef} style={{
