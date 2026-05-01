@@ -966,6 +966,7 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile }: { se
             </button>
           </div>
         </div>
+        <BottomNav />
       </div>
 
       {/* ── CSS（bubble/page.tsx から転用） ── */}
