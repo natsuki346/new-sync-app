@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import SyncLogo from '@/components/SyncLogo';
@@ -1026,7 +1026,7 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile }: { se
 
 const MEME_KEY = 'sync_meme_image';
 
-export default function BubbleV2Page() {
+function BubbleV2PageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const fromSettings = searchParams.get('from') === 'settings';
@@ -1078,5 +1078,13 @@ export default function BubbleV2Page() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+export default function BubbleV2Page() {
+  return (
+    <Suspense fallback={<div style={{ height: '100dvh', background: '#0a0a1a' }} />}>
+      <BubbleV2PageInner />
+    </Suspense>
   );
 }
