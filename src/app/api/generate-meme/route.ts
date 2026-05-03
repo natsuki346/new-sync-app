@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
         'Identity: preserve facial proportions. ' +
         'Negative: large iris, iris filling entire eye, small sclera, sharp eyes, intense gaze, scary, uncanny, realistic skin, harsh shadows.',
       n: 1,
-      size: '1024x1024',
+      size: '512x512',
     });
 
     const item = response.data?.[0];

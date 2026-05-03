@@ -286,10 +286,11 @@ interface PersonCircleProps {
 }
 
 function PersonCircle({ emoji, size, opacity, floatDuration, floatDelay, messages, x, y, borderColor, onBubbleTap, onMemeTap, onPop, externalBubble }: PersonCircleProps) {
-  const [activeBubble, setActiveBubble] = useState<string | null>(null);
+  const activeBubbleRef = useRef<string | null>(null);
   const [isNew,        setIsNew]        = useState(false);
   const [isDanger,     setIsDanger]     = useState(false);
   const [isLiked,      setIsLiked]      = useState(false);
+  const [isPopping,    setIsPopping]    = useState(false);
   const [floatEmojis,  setFloatEmojis]  = useState<{ id: number; dx: number; sz: number; delay: number }[]>([]);
 
   const bubbleWrapperRef = useRef<HTMLDivElement>(null);
@@ -298,11 +299,11 @@ function PersonCircle({ emoji, size, opacity, floatDuration, floatDelay, message
   // Realtime受信バブルを一時的に表示
   useEffect(() => {
     if (!externalBubble) return;
-    setActiveBubble(externalBubble.text);
+    activeBubbleRef.current = externalBubble.text;
     setIsNew(true);
     setIsDanger(false);
     const t1 = setTimeout(() => setIsNew(false), 400);
-    const t2 = setTimeout(() => setActiveBubble(null), PERSON_BUBBLE_SHOW_MS);
+    const t2 = setTimeout(() => { activeBubbleRef.current = null; }, PERSON_BUBBLE_SHOW_MS);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalBubble?.id]);
@@ -318,26 +319,26 @@ function PersonCircle({ emoji, size, opacity, floatDuration, floatDelay, message
     function scheduleNext() {
       sendTimer = setTimeout(() => {
         const msg = messages[Math.floor(Math.random() * messages.length)];
-        setActiveBubble(msg);
+        activeBubbleRef.current = msg;
         setIsNew(true);
         isNewTimer = setTimeout(() => setIsNew(false), 400);
         dangerTimer = setTimeout(() => setIsDanger(true), PERSON_BUBBLE_SHOW_MS - DANGER_THRESHOLD * 1000);
 
-        // 寿命後 bubblePop → pop burst → setActiveBubble(null)
+        // 寿命後 pop アニメーション → onPop → 次のバブルへ
         popTimer = setTimeout(() => {
-          const el = bubbleWrapperRef.current;
-          if (el) {
-            el.style.animation    = 'bubblePop 0.3s ease-out forwards';
-            el.style.pointerEvents = 'none';
-            const r = el.getBoundingClientRect();
-            onPop(r.left + r.width / 2, r.top + r.height / 2);
-          }
+          setIsPopping(true);
           clearTimer = setTimeout(() => {
-            setActiveBubble(null);
+            const el = bubbleWrapperRef.current;
+            if (el) {
+              const r = el.getBoundingClientRect();
+              onPop(r.left + r.width / 2, r.top + r.height / 2);
+            }
+            activeBubbleRef.current = null;
+            setIsPopping(false);
             setIsDanger(false);
             scheduleNext();
-          }, 350);
-        }, PERSON_BUBBLE_SHOW_MS);
+          }, 400);
+        }, PERSON_BUBBLE_SHOW_MS - 400);
       }, PERSON_BUBBLE_MIN_MS + Math.random() * PERSON_BUBBLE_RANGE_MS);
     }
 
@@ -364,26 +365,24 @@ function PersonCircle({ emoji, size, opacity, floatDuration, floatDelay, message
 
   return (
     <div style={{ position: 'absolute', left: x - size / 2, top: y - size / 2, width: size, height: size, opacity }}>
-      {/* 浮遊アニメーション（-15px ↕ mirror） */}
       <motion.div
-        animate={{ y: -15 }}
-        transition={{ duration: floatDuration, repeat: Infinity, repeatType: 'mirror', ease: 'easeInOut', delay: floatDelay }}
+        animate={{ y: -15, scale: isPopping ? 0 : 1, opacity: isPopping ? 0 : 1 }}
+        transition={isPopping ? { duration: 0.4, ease: 'easeIn' } : { duration: floatDuration, repeat: Infinity, repeatType: 'mirror', ease: 'easeInOut', delay: floatDelay }}
         style={{ position: 'relative', width: size, height: size }}
       >
         {/* バブル（アクティブ時のみ）— ref で bubblePop を直接適用 */}
-        {activeBubble && (
+        {activeBubbleRef.current && (
           <div ref={bubbleWrapperRef}>
-            {/* 出現アニメーション + 危険時グロー */}
             <div style={{
               animation:  isNew ? 'bubbleSpawn 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards' : 'none',
               filter:     isDanger ? 'drop-shadow(0 0 8px rgba(255,255,255,0.9))' : 'none',
               transition: 'filter 0.3s ease',
             }}>
               <SpeechBubble
-                text={activeBubble} emoji={emoji}
+                text={activeBubbleRef.current} emoji={emoji}
                 borderColor={borderColor} isDanger={isDanger} isLiked={isLiked}
                 onReact={handleReact}
-                onBubbleTap={(cx, cy) => onBubbleTap(cx, cy, activeBubble)}
+                onBubbleTap={(cx, cy) => onBubbleTap(cx, cy, activeBubbleRef.current!)}
               />
             </div>
           </div>
@@ -439,7 +438,6 @@ function SelfBubbleView({ text, danger, divRef, cx, cy, selfSize }: SelfBubbleVi
         userSelect: 'none',
       }}
     >
-      {/* 出現アニメーション + 危険時グロー（bubble/page.tsx BubbleItem と同一） */}
       <div style={{
         animation:  isNew ? 'bubbleSpawn 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards' : 'none',
         filter:     danger ? 'drop-shadow(0 0 8px rgba(255,255,255,0.9))' : 'none',
@@ -604,7 +602,8 @@ interface PopBurst {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile }: { selfImage: string; onChangeMeme: () => void; user: any; profile: any }) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubbleColor }: { selfImage: string; onChangeMeme: () => void; user: any; profile: any; myBubbleColor: string }) {
   // 時間帯
   const [tod, setTod] = useState<ToD>(() => getToD(new Date().getHours()));
 
@@ -627,6 +626,31 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile }: { se
   const [inputText, setInputText] = useState('');
   const [fieldSize, setFieldSize] = useState({ w: 0, h: 0 });
   const fieldRef = useRef<HTMLDivElement>(null);
+
+  // キーボード高さ追従
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.visualViewport) {
+        const diff = window.innerHeight - window.visualViewport.height;
+        setKeyboardHeight(diff > 0 ? diff : 0);
+      }
+    };
+    window.visualViewport?.addEventListener('resize', handleResize);
+    return () => window.visualViewport?.removeEventListener('resize', handleResize);
+  }, []);
+
+  // BottomNav の実測高さ
+  const [navHeight, setNavHeight] = useState(80);
+  useEffect(() => {
+    const measureNav = () => {
+      const nav = document.querySelector('nav');
+      if (nav) setNavHeight(nav.getBoundingClientRect().height);
+    };
+    measureNav();
+    window.addEventListener('resize', measureNav);
+    return () => window.removeEventListener('resize', measureNav);
+  }, []);
 
   const blinkData = useRef(PEOPLE.map(() => makeFloatData()));
 
@@ -803,22 +827,27 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile }: { se
   const ready     = w > 0 && h > 0;
   const cx = w / 2;
   const cy = h / 2;
-  const PADDING = 30;
-  const MIN_DIST_SELF = 160;
-  const MIN_DIST_OTHER = 85;
-  const positions: { x: number; y: number; ring: 1 | 2 }[] = [];
-  const MAX_TRIES = 200;
 
-  for (let i = 0; i < 29; i++) {
-    for (let t = 0; t < MAX_TRIES; t++) {
-      const x = PADDING + Math.random() * (w - PADDING * 2);
-      const y = PADDING + Math.random() * (h - PADDING * 2);
-      if (Math.hypot(x - cx, y - cy) < MIN_DIST_SELF) continue;
-      if (positions.some(p => Math.hypot(p.x - x, p.y - y) < MIN_DIST_OTHER)) continue;
-      positions.push({ x, y, ring: (i < 10 ? 1 : 2) as 1 | 2 });
-      break;
+  const positions = useMemo(() => {
+    const PADDING = 30;
+    const MIN_DIST_SELF = 160;
+    const MIN_DIST_OTHER = 85;
+    const MAX_TRIES = 200;
+    const result: { x: number; y: number; ring: 1 | 2 }[] = [];
+
+    for (let i = 0; i < 29; i++) {
+      for (let t = 0; t < MAX_TRIES; t++) {
+        const x = PADDING + Math.random() * (w - PADDING * 2);
+        const y = PADDING + Math.random() * (h - PADDING * 2);
+        if (Math.hypot(x - cx, y - cy) < MIN_DIST_SELF) continue;
+        if (result.some(p => Math.hypot(p.x - x, p.y - y) < MIN_DIST_OTHER)) continue;
+        result.push({ x, y, ring: (i < 10 ? 1 : 2) as 1 | 2 });
+        break;
+      }
     }
-  }
+    return result;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [w, h]);
 
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: '#0a0a1a' }}>
@@ -874,7 +903,7 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile }: { se
             dragMomentum={true}
             style={{ position: 'absolute', inset: 0, touchAction: 'none' }}
           >
-            {/* 29人（元の2リング配置） */}
+            {/* 29人（ランダム配置） */}
             {PEOPLE.map((p, i) => {
               const pos         = positions[i];
               if (!pos) return null;
@@ -901,13 +930,13 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile }: { se
             <motion.div
               initial={{ scale: 0, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: 'spring', stiffness: 240, damping: 20, delay: 0.1 }}
+              transition={{ duration: 0 }}
               style={{ position: 'absolute', left: cx - SELF_SIZE/2, top: cy - SELF_SIZE/2, width: SELF_SIZE, height: SELF_SIZE, zIndex: 3 }}
             >
               <motion.div
                 animate={{ y: -15 }}
                 transition={{ duration: selfFloatData.floatDuration, repeat: Infinity, repeatType: 'mirror', ease: 'easeInOut', delay: selfFloatData.floatDelay + 0.6 }}
-                style={{ position: 'relative', width: SELF_SIZE, height: SELF_SIZE, borderRadius: '50%', overflow: 'hidden', border: '2.5px solid rgba(255,255,255,0.65)', boxShadow: '0 0 24px rgba(124,111,232,0.6), 0 0 48px rgba(124,111,232,0.2)' }}
+                style={{ position: 'relative', width: SELF_SIZE, height: SELF_SIZE, borderRadius: '50%', overflow: 'hidden', border: `2.5px solid ${myBubbleColor}`, boxShadow: '0 0 24px rgba(124,111,232,0.6), 0 0 48px rgba(124,111,232,0.2)' }}
               >
                 {selfImage ? <img src={selfImage} alt="自分のミーム" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
               </motion.div>
@@ -948,11 +977,11 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile }: { se
       ))}
 
       {/* ── 入力欄（キーボードが出ても固定） ── */}
-      <div style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 390, zIndex: 200, background: 'rgba(10,10,26,0.92)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderTop: '0.5px solid rgba(255,255,255,0.07)' }}>
+      <div style={{ position: 'fixed', bottom: navHeight + keyboardHeight, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 390, zIndex: 200, background: 'linear-gradient(to top, rgba(10,10,26,0.85) 60%, transparent)', backdropFilter: 'none', WebkitBackdropFilter: 'none', borderTop: 'none' }}>
         {/* 入力欄 */}
         <div style={{ padding: '10px 16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, borderRadius: 22, padding: '8px 12px 8px 14px', background: inputText.trim() ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.07)', border: '1px solid rgba(124,111,232,0.35)', boxShadow: inputText.trim() ? '0 0 12px rgba(124,111,232,0.3)' : 'none', transition: 'box-shadow 0.25s ease, background 0.25s ease' }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, borderRadius: 22, padding: '8px 12px 8px 14px', background: 'rgba(255,255,255,0.12)', border: `1px solid ${myBubbleColor}40`, boxShadow: 'none' }}>
               <input
                 type="text"
                 value={inputText}
@@ -1041,7 +1070,26 @@ function BubbleV2PageInner() {
   const fromSettings = searchParams.get('from') === 'settings';
   const { user, profile, loading } = useAuth();
   const [step,      setStep]      = useState<'create' | 'bubble' | null>(null);
-  const [memeImage, setMemeImage] = useState<string>('');
+  const [memeImage, setMemeImage] = useState(() =>
+    typeof window !== 'undefined' ? localStorage.getItem('sync_meme_image') || '' : ''
+  );
+  const [myBubbleColor, setMyBubbleColor] = useState(() =>
+    typeof window !== 'undefined' ? localStorage.getItem('sync_my_bubble_color') || 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.65)'
+  );
+
+  // localStorageの変更を検知して反映
+  useEffect(() => {
+    const handleStorage = () => {
+      setMemeImage(localStorage.getItem('sync_meme_image') || '');
+      setMyBubbleColor(localStorage.getItem('sync_my_bubble_color') || 'rgba(255,255,255,0.65)');
+    };
+    window.addEventListener('storage', handleStorage);
+    window.addEventListener('focus', handleStorage);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('focus', handleStorage);
+    };
+  }, []);
 
   // 未ログイン時は /auth にリダイレクト
   useEffect(() => {
@@ -1082,7 +1130,7 @@ function BubbleV2PageInner() {
           </motion.div>
         ) : (
           <motion.div key="bubble" initial={{ opacity: 0, scale: 1.04 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.35 }} style={{ height: '100dvh' }}>
-            <BubbleScreen selfImage={memeImage} onChangeMeme={handleChangeMeme} user={user} profile={profile} />
+            <BubbleScreen selfImage={memeImage} onChangeMeme={handleChangeMeme} user={user} profile={profile} myBubbleColor={myBubbleColor} />
           </motion.div>
         )}
       </AnimatePresence>
