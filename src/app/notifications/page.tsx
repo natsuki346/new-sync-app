@@ -296,7 +296,7 @@ export default function NotificationsPage() {
       </div>
 
       {/* ── 通知リスト ────────────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto pb-20">
+      <div className="flex-1 overflow-y-auto pb-20" style={{ paddingBottom: 80 }}>
         {loading ? (
           <div className="py-16 text-center">
             <p className="text-sm" style={{ color: 'var(--muted)' }}>Loading...</p>

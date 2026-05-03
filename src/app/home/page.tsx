@@ -201,6 +201,7 @@ function SideDrawer({
           style={{
             display: 'flex', alignItems: 'center', gap: 16,
             width: '100%', padding: '16px 20px',
+            paddingBottom: 96,
             background: 'transparent', border: 'none', cursor: 'pointer',
           }}
         >
@@ -572,7 +573,7 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
         }}>
           {profile?.avatar_url ?? '✨'}
         </div>
-        <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 16 }}>
+        <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 96 }}>
           <div style={{ position: 'relative' }}>
             {/* 装飾レイヤー（背面）: #タグをピンクにハイライト */}
             <div
@@ -688,7 +689,7 @@ function PostModal({ open, onClose, onPost }: { open: boolean; onClose: () => vo
       {/* ── 下部ツールバー ── */}
       <div style={{
         flexShrink: 0, display: 'flex', alignItems: 'center',
-        padding: '8px 8px', paddingBottom: 'max(env(safe-area-inset-bottom, 8px), 8px)',
+        padding: '8px 8px', paddingBottom: 'calc(80px + max(env(safe-area-inset-bottom, 8px), 8px))',
         borderTop: '1px solid rgb(var(--border-rgb))', background: 'var(--background)',
       }}>
         <button
@@ -876,7 +877,7 @@ function ReplyModal({
       </div>
 
       {/* ── 本文エリア ── */}
-      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6">
+      <div className="flex-1 overflow-y-auto px-4 pt-4 pb-6" style={{ paddingBottom: 80 }}>
         {displayPost && (
           <>
             {/* 元投稿 */}

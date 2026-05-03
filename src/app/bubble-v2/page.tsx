@@ -801,15 +801,24 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile }: { se
 
   const SELF_SIZE = 68;
   const ready     = w > 0 && h > 0;
-  // 元の2リング配置（最初の実装と同じ）
   const cx = w / 2;
   const cy = h / 2;
-  const r1 = Math.min(cx, cy) * 0.82;   // Ring1 隣接距離 ≈ 95px → ~116px
-  const r2 = Math.min(cx, cy) * 1.35;   // Ring2 隣接距離 ≈ 67px → ~  84px（半径拡大で密度解消）
-  const positions = [
-    ...Array.from({ length: 10 }, (_, i) => { const a = (i/10)*Math.PI*2 - Math.PI/2; return { x: cx + r1*Math.cos(a), y: cy + r1*Math.sin(a), ring: 1 as const }; }),
-    ...Array.from({ length: 19 }, (_, i) => { const a = (i/19)*Math.PI*2 - Math.PI/2; return { x: cx + r2*Math.cos(a), y: cy + r2*Math.sin(a), ring: 2 as const }; }),
-  ];
+  const PADDING = 30;
+  const MIN_DIST_SELF = 160;
+  const MIN_DIST_OTHER = 85;
+  const positions: { x: number; y: number; ring: 1 | 2 }[] = [];
+  const MAX_TRIES = 200;
+
+  for (let i = 0; i < 29; i++) {
+    for (let t = 0; t < MAX_TRIES; t++) {
+      const x = PADDING + Math.random() * (w - PADDING * 2);
+      const y = PADDING + Math.random() * (h - PADDING * 2);
+      if (Math.hypot(x - cx, y - cy) < MIN_DIST_SELF) continue;
+      if (positions.some(p => Math.hypot(p.x - x, p.y - y) < MIN_DIST_OTHER)) continue;
+      positions.push({ x, y, ring: (i < 10 ? 1 : 2) as 1 | 2 });
+      break;
+    }
+  }
 
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: '#0a0a1a' }}>
@@ -840,12 +849,11 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile }: { se
       </div>
 
       {/* ── ヘッダー ── */}
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', zIndex: 100 }}>
+      <div style={{ position: 'fixed', top: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 390, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', zIndex: 100 }}>
         <SyncLogo width={100} />
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 14, color: 'rgba(255,255,255,0.88)', fontWeight: 700 }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#4ade80', display: 'inline-block', boxShadow: '0 0 6px #4ade80' }} />
-            {ONLINE}
           </div>
           <button
             onClick={onChangeMeme}
@@ -869,6 +877,7 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile }: { se
             {/* 29人（元の2リング配置） */}
             {PEOPLE.map((p, i) => {
               const pos         = positions[i];
+              if (!pos) return null;
               const size        = pos.ring === 1 ? 56 : 38;
               const opacity     = pos.ring === 1 ? 0.88 : 0.62;
               const bd          = blinkData.current[i];
@@ -939,7 +948,7 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile }: { se
       ))}
 
       {/* ── 入力欄（キーボードが出ても固定） ── */}
-      <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 390, zIndex: 200, background: 'rgba(10,10,26,0.92)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderTop: '0.5px solid rgba(255,255,255,0.07)' }}>
+      <div style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 390, zIndex: 200, background: 'rgba(10,10,26,0.92)', backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)', borderTop: '0.5px solid rgba(255,255,255,0.07)' }}>
         {/* 入力欄 */}
         <div style={{ padding: '10px 16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
@@ -1065,7 +1074,7 @@ function BubbleV2PageInner() {
   if (loading || !user || !step) return <div style={{ height: '100dvh', background: '#0a0a1a' }} />;
 
   return (
-    <div style={{ position: 'fixed', top: 0, bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 390, zIndex: 0 }}>
+    <div style={{ position: 'fixed', top: 0, bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 390, zIndex: 10 }}>
       <AnimatePresence mode="wait">
         {step === 'create' ? (
           <motion.div key="create" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.3 }} style={{ height: '100dvh' }}>

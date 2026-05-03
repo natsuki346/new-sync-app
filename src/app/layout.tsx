@@ -60,7 +60,9 @@ export default function RootLayout({
           {children}
         </div>
         {/* Bottom nav ... */}
-        <BottomNav />
+        <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 390, zIndex: 100 }}>
+          <BottomNav />
+        </div>
       </div>
       <IncomingCallOverlay />
       <OutgoingCallOverlay />

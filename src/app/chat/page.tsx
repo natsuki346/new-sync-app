@@ -437,7 +437,7 @@ export default function ChatPage() {
       </div>
 
       {/* ── 会話リスト ────────────────────────────────────────────── */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto" style={{ paddingBottom: 80 }}>
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <p className="text-sm" style={{ color: 'var(--muted)' }}>Loading…</p>
@@ -551,8 +551,8 @@ export default function ChatPage() {
 
           {/* シート本体 */}
           <div
-            className="absolute bottom-0 left-0 right-0 z-50 rounded-t-3xl overflow-hidden sheet-animate"
-            style={{ background: '#1a1a2e' }}
+            className="absolute left-0 right-0 z-50 rounded-t-3xl overflow-hidden sheet-animate"
+            style={{ bottom: 80, background: '#1a1a2e' }}
           >
             {/* ハンドルバー */}
             <div className="flex justify-center pt-3 pb-1">

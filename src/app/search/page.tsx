@@ -272,7 +272,7 @@ export default function SearchPage() {
       </header>
 
       {/* ── コンテンツ */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" style={{ paddingBottom: 80 }}>
         {countsLoading ? (
           <div className="py-16 text-center">
             <p className="text-sm" style={{ color: 'var(--muted)' }}>読み込み中...</p>

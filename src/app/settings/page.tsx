@@ -711,7 +711,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto" style={{ background: 'var(--background)' }}>
+    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto" style={{ background: 'var(--background)', paddingBottom: 80 }}>
 
       {/* ── ヘッダー ── */}
       <header
