@@ -59,11 +59,11 @@ export default function BottomNav() {
 
   return (
     <nav
-      className="flex items-center justify-around px-8 pb-6 pt-3 flex-shrink-0"
+      className="flex items-center justify-around px-8 pt-3 flex-shrink-0"
       style={{ background: 'linear-gradient(to top, var(--background) 80%, transparent)' }}
     >
       {/* Home */}
-      <Link href="/auth" className="flex flex-col items-center gap-1"
+      <Link href="/home" className="flex flex-col items-center gap-1"
         style={{ cursor: 'pointer', WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
       >
         <svg viewBox="0 0 24 24" width="24" height="24">

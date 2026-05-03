@@ -532,7 +532,7 @@ export default function SettingsPage() {
 
   function handleChangeMeme() {
     localStorage.removeItem('sync_meme_image');
-    router.push('/bubble-v2');
+    router.push('/bubble-v2?from=settings');
   }
 
   // テーマ検出
@@ -724,7 +724,7 @@ export default function SettingsPage() {
         }}
       >
         <button
-          onClick={() => router.back()}
+          onClick={() => router.push('/home')}
           className="w-9 h-9 flex items-center justify-center rounded-full active:scale-90 transition-transform"
           style={{ background: 'var(--surface-2)' }}
         >

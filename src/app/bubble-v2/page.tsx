@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import SyncLogo from '@/components/SyncLogo';
 import ReactionFloatingEffect from '@/components/ReactionFloatingEffect';
-import BottomNav from '@/components/BottomNav';
+
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
@@ -900,7 +900,7 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile }: { se
                 transition={{ duration: selfFloatData.floatDuration, repeat: Infinity, repeatType: 'mirror', ease: 'easeInOut', delay: selfFloatData.floatDelay + 0.6 }}
                 style={{ position: 'relative', width: SELF_SIZE, height: SELF_SIZE, borderRadius: '50%', overflow: 'hidden', border: '2.5px solid rgba(255,255,255,0.65)', boxShadow: '0 0 24px rgba(124,111,232,0.6), 0 0 48px rgba(124,111,232,0.2)' }}
               >
-                <img src={selfImage} alt="自分のミーム" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                {selfImage ? <img src={selfImage} alt="自分のミーム" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
               </motion.div>
             </motion.div>
 
@@ -966,7 +966,6 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile }: { se
             </button>
           </div>
         </div>
-        <BottomNav />
       </div>
 
       {/* ── CSS（bubble/page.tsx から転用） ── */}
@@ -1029,6 +1028,8 @@ const MEME_KEY = 'sync_meme_image';
 
 export default function BubbleV2Page() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const fromSettings = searchParams.get('from') === 'settings';
   const { user, profile, loading } = useAuth();
   const [step,      setStep]      = useState<'create' | 'bubble' | null>(null);
   const [memeImage, setMemeImage] = useState<string>('');
@@ -1064,11 +1065,11 @@ export default function BubbleV2Page() {
   if (loading || !user || !step) return <div style={{ height: '100dvh', background: '#0a0a1a' }} />;
 
   return (
-    <div style={{ position: 'fixed', top: 0, bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 390, overflow: 'hidden', zIndex: 0 }}>
+    <div style={{ position: 'fixed', top: 0, bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 390, zIndex: 0 }}>
       <AnimatePresence mode="wait">
         {step === 'create' ? (
           <motion.div key="create" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.3 }} style={{ height: '100dvh' }}>
-            <CreateScreen onConfirm={handleConfirm} onBack={memeImage ? () => setStep('bubble') : undefined} />
+            <CreateScreen onConfirm={handleConfirm} onBack={() => fromSettings ? router.push('/settings') : setStep('bubble')} />
           </motion.div>
         ) : (
           <motion.div key="bubble" initial={{ opacity: 0, scale: 1.04 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.35 }} style={{ height: '100dvh' }}>

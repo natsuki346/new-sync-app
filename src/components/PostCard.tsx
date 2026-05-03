@@ -197,7 +197,11 @@ export default function PostCard({ post, onReply, onUserClick, onHashtagClick, o
             style={{ background: 'var(--surface-2)' }}
             onClick={onUserClick}
           >
-            {post.avatar}
+            {post.avatar && post.avatar.length > 0 && (post.avatar.startsWith('http') || post.avatar.startsWith('data:')) ? (
+              <img src={post.avatar} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }} />
+            ) : (
+              <span>{post.avatar || '✨'}</span>
+            )}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-baseline justify-between gap-2">
