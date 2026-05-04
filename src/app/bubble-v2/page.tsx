@@ -109,15 +109,24 @@ function TapModal({ menu, onClose }: {
     setTimeout(onClose, 650);
   }
 
-  const vw     = typeof window !== 'undefined' ? window.innerWidth  : 390;
-  const vh     = typeof window !== 'undefined' ? window.innerHeight : 844;
-  const MARGIN = 10;
-  const CARD_H = 216;
-  let left = menu.clientX - ACTION_MENU_W / 2;
-  let top  = menu.clientY + 14;
+  // コンテナ（data-bubble-container）の実測 rect を取得
+  // position:fixed の子要素はこのコンテナ基準で座標が決まる
+  const containerEl = typeof document !== 'undefined'
+    ? document.querySelector('[data-bubble-container]')
+    : null;
+  const containerRect = containerEl
+    ? containerEl.getBoundingClientRect()
+    : { left: 0, width: typeof window !== 'undefined' ? Math.min(window.innerWidth, 390) : 390, top: 0, height: typeof window !== 'undefined' ? window.innerHeight : 844 };
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 844;
+  const MARGIN = 8;
+  const CARD_H = 220;
+  // clientX をコンテナ基準ローカル座標に変換（fixedはコンテナ基準のため、containerLeftを足さない）
+  const localX = menu.clientX - containerRect.left;
+  let left = Math.max(MARGIN, Math.min(localX - ACTION_MENU_W / 2, containerRect.width - ACTION_MENU_W - MARGIN));
+  // top: コンテナ top=0 のため clientY がそのままコンテナ基準 Y
+  let top = menu.clientY + 14;
   if (top + CARD_H > vh - 20) top = menu.clientY - CARD_H - 14;
   if (top < 56) top = 56;
-  left = Math.max(MARGIN, Math.min(left, vw - ACTION_MENU_W - MARGIN));
 
   return (
     <>
@@ -225,7 +234,7 @@ function SpeechBubble({ text, emoji, borderColor, isDanger, isLiked, onReact, on
             alignItems:           'center',
             gap:                  6,
             padding:              '5px 8px 5px 5px',
-            background:           'rgba(255,255,255,0.08)',
+            background:           `${borderColor}22`,
             borderRadius:         20,
             border:               `1.5px solid ${borderColor}`,
             boxShadow:            `inset 0 1px 2px rgba(255,255,255,0.15), 0 0 8px ${borderColor}55`,
@@ -325,9 +334,14 @@ function PersonCircle({ emoji, size, opacity, floatDuration, floatDelay, message
         dangerTimer = setTimeout(() => setIsDanger(true), PERSON_BUBBLE_SHOW_MS - DANGER_THRESHOLD * 1000);
 
         popTimer = setTimeout(() => {
+          const el = bubbleWrapperRef.current;
+          if (el) {
+            el.style.animation = 'bubbleFade 0.3s ease-out forwards';
+          }
           clearTimer = setTimeout(() => {
             activeBubbleRef.current = null;
             setIsDanger(false);
+            if (el) el.style.animation = '';
             scheduleNext();
           }, 400);
         }, PERSON_BUBBLE_SHOW_MS - 400);
@@ -437,29 +451,40 @@ function SelfBubbleView({ text, danger, divRef, cx, cy, selfSize, borderColor, t
         filter:     danger ? 'drop-shadow(0 0 8px rgba(255,255,255,0.9))' : 'none',
         transition: 'filter 0.3s ease',
       }}>
-        {/* バブル本体 */}
+        {/* バブル本体 (ラッパー: 枠線グラデーション) */}
         <div style={{
-          position:             'relative',
-          display:              'flex',
-          alignItems:           'center',
-          gap:                  6,
-          padding:              '5px 10px',
-          background:           'rgba(255,255,255,0.08)',
-          borderRadius:         20,
-          border:               `1.5px solid ${borderColor}`,
-          boxShadow:            `inset 0 1px 2px rgba(255,255,255,0.15), 0 0 8px ${borderColor}44`,
-          animation:            danger ? 'pururu 0.4s ease-in-out infinite' : 'none',
-          backdropFilter:       'blur(2px)',
-          WebkitBackdropFilter: 'blur(2px)',
-          overflow:             'hidden',
-          maxWidth:             160,
-          whiteSpace:           'nowrap',
+          display:    'inline-flex',
+          borderRadius: 21.5,
+          padding:    1.5,
+          background: borderColor === 'rainbow'
+            ? 'linear-gradient(135deg, #7C6FE8, #D455A8, #E84040, #E8A020, #48C468, #2890D8, #7C6FE8)'
+            : borderColor,
+          boxShadow:  borderColor === 'rainbow'
+            ? '0 0 8px rgba(124,111,232,0.5)'
+            : `0 0 8px ${borderColor}44`,
+          animation:  danger ? 'pururu 0.4s ease-in-out infinite' : 'none',
         }}>
-          {/* 光沢ハイライト */}
-          <div style={{ position: 'absolute', top: 3, left: 6, width: '25%', height: '50%', borderRadius: '50%', background: 'linear-gradient(135deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 100%)', pointerEvents: 'none' }} />
-          <span style={{ flex: 1, minWidth: 0, fontSize: 11, fontWeight: 600, color: textColor, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: '0.01em' }}>
-            {text}
-          </span>
+          <div style={{
+            position:             'relative',
+            display:              'flex',
+            alignItems:           'center',
+            gap:                  6,
+            padding:              '5px 10px',
+            background:           'rgba(10,10,26,0.55)',
+            borderRadius:         20,
+            backdropFilter:       'blur(2px)',
+            WebkitBackdropFilter: 'blur(2px)',
+            overflow:             'hidden',
+            maxWidth:             160,
+            whiteSpace:           'nowrap',
+            boxShadow:            'inset 0 1px 2px rgba(255,255,255,0.15)',
+          }}>
+            {/* 光沢ハイライト */}
+            <div style={{ position: 'absolute', top: 3, left: 6, width: '25%', height: '50%', borderRadius: '50%', background: 'linear-gradient(135deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 100%)', pointerEvents: 'none' }} />
+            <span style={{ flex: 1, minWidth: 0, fontSize: 11, fontWeight: 600, color: textColor, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: '0.01em' }}>
+              {text}
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -933,7 +958,7 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
               <motion.div
                 animate={{ y: -15 }}
                 transition={{ duration: selfFloatData.floatDuration, repeat: Infinity, repeatType: 'mirror', ease: 'easeInOut', delay: selfFloatData.floatDelay + 0.6 }}
-                style={{ position: 'relative', width: SELF_SIZE, height: SELF_SIZE, borderRadius: '50%', overflow: 'hidden', border: myBubbleColor === 'rainbow' ? '2.5px solid #ff6b6b' : myBubbleColor === 'transparent' ? 'none' : `2.5px solid ${myBubbleColor}`, boxShadow: '0 0 24px rgba(124,111,232,0.6), 0 0 48px rgba(124,111,232,0.2)' }}
+                style={{ position: 'relative', width: SELF_SIZE, height: SELF_SIZE, borderRadius: '50%', overflow: 'hidden', border: myBubbleColor === 'transparent' ? 'none' : '2.5px solid transparent', backgroundImage: myBubbleColor === 'rainbow' ? 'linear-gradient(#0a0a1a, #0a0a1a), linear-gradient(135deg, #7C6FE8, #D455A8, #E84040, #E8A020, #48C468, #2890D8, #7C6FE8)' : 'none', backgroundOrigin: myBubbleColor === 'rainbow' ? 'border-box' : undefined, backgroundClip: myBubbleColor === 'rainbow' ? 'padding-box, border-box' : undefined, outline: myBubbleColor !== 'rainbow' && myBubbleColor !== 'transparent' ? `2.5px solid ${myBubbleColor}` : 'none', outlineOffset: '-2.5px', boxShadow: '0 0 24px rgba(124,111,232,0.6), 0 0 48px rgba(124,111,232,0.2)' }}
               >
                 {selfImage ? <img src={selfImage} alt="自分のミーム" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
               </motion.div>
@@ -980,7 +1005,7 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
         {/* 入力欄 */}
         <div style={{ padding: '10px 16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, borderRadius: 22, padding: '8px 12px 8px 14px', background: 'rgba(255,255,255,0.10)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', border: myBubbleColor === 'rainbow' ? '1.5px solid rgba(255,107,107,0.9)' : `1.5px solid ${myBubbleColor}`, boxShadow: myBubbleColor === 'rainbow' ? '0 0 12px rgba(255,107,107,0.4)' : `0 0 12px ${myBubbleColor}66` }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, borderRadius: 22, padding: '8px 12px 8px 14px', background: 'rgba(255,255,255,0.10)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', border: '1.5px solid transparent', backgroundImage: myBubbleColor === 'rainbow' ? 'linear-gradient(rgba(255,255,255,0.10), rgba(255,255,255,0.10)), linear-gradient(135deg, #7C6FE8, #D455A8, #E84040, #E8A020, #48C468, #2890D8, #7C6FE8)' : `linear-gradient(rgba(255,255,255,0.10), rgba(255,255,255,0.10)), linear-gradient(${myBubbleColor}, ${myBubbleColor})`, backgroundOrigin: 'border-box', backgroundClip: 'padding-box, border-box', boxShadow: myBubbleColor === 'rainbow' ? '0 0 12px rgba(124,111,232,0.4)' : `0 0 12px ${myBubbleColor}66` }}>
               <input
                 type="text"
                 value={inputText}
@@ -1073,17 +1098,16 @@ function BubbleV2PageInner() {
     typeof window !== 'undefined' ? localStorage.getItem('sync_meme_image') || '' : ''
   );
   const [myBubbleColor, setMyBubbleColor] = useState(() => {
-    if (typeof window === 'undefined') return 'rgba(255,255,255,0.65)';
+    if (typeof window === 'undefined') return 'rainbow';
     try {
       const style = localStorage.getItem('bubble_style');
       if (style) {
         const parsed = JSON.parse(style);
-        if (parsed.borderColor && parsed.borderColor !== 'none') {
-          return parsed.borderColor;
-        }
+        if (parsed.borderColor === 'rainbow') return 'rainbow';
+        if (parsed.borderColor && parsed.borderColor !== 'none') return parsed.borderColor;
       }
     } catch {}
-    return 'rgba(255,255,255,0.65)';
+    return 'rainbow';
   });
   const [bubbleTextColor, setBubbleTextColor] = useState(() =>
     typeof window !== 'undefined' ? localStorage.getItem('sync_bubble_text_color') || '#ffffff' : '#ffffff'
@@ -1099,8 +1123,12 @@ function BubbleV2PageInner() {
         const style = localStorage.getItem('bubble_style');
         if (style) {
           const parsed = JSON.parse(style);
-          if (parsed.borderColor && parsed.borderColor !== 'none') {
+          if (parsed.borderColor === 'rainbow') {
+            setMyBubbleColor('rainbow');
+          } else if (parsed.borderColor && parsed.borderColor !== 'none') {
             setMyBubbleColor(parsed.borderColor);
+          } else {
+            setMyBubbleColor('rgba(255,255,255,0.65)');
           }
         }
       } catch {}
@@ -1149,7 +1177,7 @@ function BubbleV2PageInner() {
   if (loading || !user || !step) return <div style={{ height: '100dvh', background: '#0a0a1a' }} />;
 
   return (
-    <div style={{ position: 'fixed', top: 0, bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 390, zIndex: 10 }}>
+    <div data-bubble-container style={{ position: 'fixed', top: 0, bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 390, zIndex: 10 }}>
       <AnimatePresence mode="wait">
         {step === 'create' ? (
           <motion.div key="create" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 0.96 }} transition={{ duration: 0.3 }} style={{ height: '100dvh' }}>

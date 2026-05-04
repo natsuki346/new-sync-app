@@ -29,7 +29,7 @@ type PrivacyScope = 'all' | 'followers';
 type Lang = 'ja' | 'en' | 'ko' | 'zh';
 
 interface BubbleStyle { borderColor: string; borderWidth: number; }
-const DEFAULT_BUBBLE_STYLE: BubbleStyle = { borderColor: "#FF1A1A", borderWidth: 1 };
+const DEFAULT_BUBBLE_STYLE: BubbleStyle = { borderColor: "rainbow", borderWidth: 1 };
 
 // ── 言語定義 ─────────────────────────────────────────────────────
 
@@ -577,7 +577,14 @@ export default function SettingsPage() {
   const [expandCardBg,      setExpandCardBg]      = useState(false);
   const [expandHashtag,     setExpandHashtag]     = useState(false);
   const [expandBubbleStyle, setExpandBubbleStyle] = useState(false);
-  const [bubbleStyle,       setBubbleStyleState]  = useState<BubbleStyle>(DEFAULT_BUBBLE_STYLE);
+  const [bubbleStyle, setBubbleStyleState] = useState<BubbleStyle>(() => {
+    if (typeof window === 'undefined') return DEFAULT_BUBBLE_STYLE;
+    try {
+      const bs = localStorage.getItem('bubble_style');
+      if (bs) return JSON.parse(bs) as BubbleStyle;
+    } catch {}
+    return DEFAULT_BUBBLE_STYLE;
+  });
   const [expandChatMy,      setExpandChatMy]      = useState(false);
   const [expandChatTheir,   setExpandChatTheir]   = useState(false);
   const [myBubbleColor,     setMyBubbleColorState]    = useState<string>('rainbow');
@@ -613,10 +620,6 @@ export default function SettingsPage() {
       setLangState(getDeviceLang());
       setLangAuto(true);
     }
-    try {
-      const bs = localStorage.getItem('bubble_style');
-      if (bs) setBubbleStyleState(JSON.parse(bs) as BubbleStyle);
-    } catch { /* ignore */ }
   }, []);
 
   // フォロー済みタグを Supabase から取得
@@ -954,10 +957,16 @@ export default function SettingsPage() {
                   <div style={{
                     padding: '6px 16px', borderRadius: 20,
                     background: '#0d0d1a',
-                    borderWidth: (!bubbleStyle.borderColor || bubbleStyle.borderColor === 'none') ? 0 : bubbleStyle.borderWidth,
-                    borderStyle: 'solid',
-                    borderColor: (!bubbleStyle.borderColor || bubbleStyle.borderColor === 'none') ? 'transparent' : bubbleStyle.borderColor,
-                    borderImage: 'none',
+                    border: (!bubbleStyle.borderColor || bubbleStyle.borderColor === 'none')
+                      ? 'none'
+                      : bubbleStyle.borderColor === 'rainbow'
+                        ? `${bubbleStyle.borderWidth}px solid transparent`
+                        : `${bubbleStyle.borderWidth}px solid ${bubbleStyle.borderColor}`,
+                    backgroundImage: bubbleStyle.borderColor === 'rainbow'
+                      ? 'linear-gradient(#0d0d1a, #0d0d1a), linear-gradient(135deg, #7C6FE8, #D455A8, #E84040, #E8A020, #48C468, #2890D8, #7C6FE8)'
+                      : 'none',
+                    backgroundOrigin: bubbleStyle.borderColor === 'rainbow' ? 'border-box' : undefined,
+                    backgroundClip: bubbleStyle.borderColor === 'rainbow' ? 'padding-box, border-box' : undefined,
                     fontSize: 13, color: bubbleTextColor || '#fff',
                     boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.2)',
                   }}>
@@ -968,7 +977,7 @@ export default function SettingsPage() {
                 <HueSlider
                   label={t('bubbleBorderLabel')}
                   value={bubbleStyle.borderColor.startsWith('hsl') ? bubbleStyle.borderColor : ''}
-                  onChange={(c) => updateBubbleStyle({ borderColor: c || 'none' })}
+                  onChange={(c) => updateBubbleStyle({ borderColor: c || 'rainbow' })}
                 />
                 {/* ボーダー太さ */}
                 <p style={subLabelStyle}>{t('borderWidth', { width: bubbleStyle.borderWidth })}</p>
