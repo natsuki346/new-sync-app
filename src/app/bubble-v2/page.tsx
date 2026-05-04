@@ -950,7 +950,7 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
           if (row.user_id === user.id) return;
           if (row.expires_at && new Date(row.expires_at) < new Date()) return;
 
-          const idx = Math.floor(Math.random() * PEOPLE.length);
+          const idx = Math.floor(Math.random() * EMOJI_POOL.length);
           const rid = makeId();
           setReceivedBubbles(prev => ({ ...prev, [idx]: { text: row.content, id: rid } }));
           setTimeout(() => setReceivedBubbles(prev => {
