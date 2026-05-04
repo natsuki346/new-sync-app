@@ -324,17 +324,9 @@ function PersonCircle({ emoji, size, opacity, floatDuration, floatDelay, message
         isNewTimer = setTimeout(() => setIsNew(false), 400);
         dangerTimer = setTimeout(() => setIsDanger(true), PERSON_BUBBLE_SHOW_MS - DANGER_THRESHOLD * 1000);
 
-        // 寿命後 pop アニメーション → onPop → 次のバブルへ
         popTimer = setTimeout(() => {
-          setIsPopping(true);
           clearTimer = setTimeout(() => {
-            const el = bubbleWrapperRef.current;
-            if (el) {
-              const r = el.getBoundingClientRect();
-              onPop(r.left + r.width / 2, r.top + r.height / 2);
-            }
             activeBubbleRef.current = null;
-            setIsPopping(false);
             setIsDanger(false);
             scheduleNext();
           }, 400);
@@ -410,15 +402,17 @@ function PersonCircle({ emoji, size, opacity, floatDuration, floatDelay, message
 // ── 自分バブル（bubble/page.tsx の BubbleItem デザインをそのまま転用） ──
 
 interface SelfBubbleViewProps {
-  text:    string;
-  danger:  boolean;
-  divRef:  React.RefObject<HTMLDivElement | null>;
-  cx:      number;
-  cy:      number;
-  selfSize:number;
+  text:        string;
+  danger:      boolean;
+  divRef:      React.RefObject<HTMLDivElement | null>;
+  cx:          number;
+  cy:          number;
+  selfSize:    number;
+  borderColor: string;
+  textColor:   string;
 }
 
-function SelfBubbleView({ text, danger, divRef, cx, cy, selfSize }: SelfBubbleViewProps) {
+function SelfBubbleView({ text, danger, divRef, cx, cy, selfSize, borderColor, textColor }: SelfBubbleViewProps) {
   const [isNew, setIsNew] = useState(true);
   useEffect(() => {
     const t = setTimeout(() => setIsNew(false), 400);
@@ -452,8 +446,8 @@ function SelfBubbleView({ text, danger, divRef, cx, cy, selfSize }: SelfBubbleVi
           padding:              '5px 10px',
           background:           'rgba(255,255,255,0.08)',
           borderRadius:         20,
-          border:               '1.5px solid #7C6FE8',
-          boxShadow:            'inset 0 1px 2px rgba(255,255,255,0.15)',
+          border:               `1.5px solid ${borderColor}`,
+          boxShadow:            `inset 0 1px 2px rgba(255,255,255,0.15), 0 0 8px ${borderColor}44`,
           animation:            danger ? 'pururu 0.4s ease-in-out infinite' : 'none',
           backdropFilter:       'blur(2px)',
           WebkitBackdropFilter: 'blur(2px)',
@@ -463,7 +457,7 @@ function SelfBubbleView({ text, danger, divRef, cx, cy, selfSize }: SelfBubbleVi
         }}>
           {/* 光沢ハイライト */}
           <div style={{ position: 'absolute', top: 3, left: 6, width: '25%', height: '50%', borderRadius: '50%', background: 'linear-gradient(135deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 100%)', pointerEvents: 'none' }} />
-          <span style={{ flex: 1, minWidth: 0, fontSize: 11, fontWeight: 600, color: '#ffffff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: '0.01em' }}>
+          <span style={{ flex: 1, minWidth: 0, fontSize: 11, fontWeight: 600, color: textColor, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: '0.01em' }}>
             {text}
           </span>
         </div>
@@ -603,7 +597,7 @@ interface PopBurst {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubbleColor }: { selfImage: string; onChangeMeme: () => void; user: any; profile: any; myBubbleColor: string }) {
+function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubbleColor, bubbleTextColor }: { selfImage: string; onChangeMeme: () => void; user: any; profile: any; myBubbleColor: string; bubbleTextColor: string }) {
   // 時間帯
   const [tod, setTod] = useState<ToD>(() => getToD(new Date().getHours()));
 
@@ -637,20 +631,15 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
       }
     };
     window.visualViewport?.addEventListener('resize', handleResize);
-    return () => window.visualViewport?.removeEventListener('resize', handleResize);
+    window.visualViewport?.addEventListener('scroll', handleResize);
+    return () => {
+      window.visualViewport?.removeEventListener('resize', handleResize);
+      window.visualViewport?.removeEventListener('scroll', handleResize);
+    };
   }, []);
 
   // BottomNav の実測高さ
-  const [navHeight, setNavHeight] = useState(80);
-  useEffect(() => {
-    const measureNav = () => {
-      const nav = document.querySelector('nav');
-      if (nav) setNavHeight(nav.getBoundingClientRect().height);
-    };
-    measureNav();
-    window.addEventListener('resize', measureNav);
-    return () => window.removeEventListener('resize', measureNav);
-  }, []);
+  const navHeight = 80;
 
   const blinkData = useRef(PEOPLE.map(() => makeFloatData()));
 
@@ -732,6 +721,14 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
       if (popTimerRef.current)    clearTimeout(popTimerRef.current);
     };
   }, []);
+
+  const TOD_INPUT_TEXT: Record<ToD, string> = {
+    morning: 'rgba(20,20,40,0.9)',
+    day:     'rgba(10,10,30,0.9)',
+    evening: 'rgba(255,255,255,0.95)',
+    night:   'rgba(255,255,255,0.95)',
+  };
+  const inputTextColor = TOD_INPUT_TEXT[tod];
 
   const { w, h } = fieldSize;
 
@@ -910,7 +907,18 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
               const size        = pos.ring === 1 ? 56 : 38;
               const opacity     = pos.ring === 1 ? 0.88 : 0.62;
               const bd          = blinkData.current[i];
-              const borderColor = BUBBLE_COLORS[i % BUBBLE_COLORS.length];
+              const borderColor = p.isOwn
+                ? (() => {
+                    try {
+                      const style = localStorage.getItem('bubble_style');
+                      if (style) {
+                        const parsed = JSON.parse(style);
+                        if (parsed.borderColor && parsed.borderColor !== 'none') return parsed.borderColor;
+                      }
+                    } catch {}
+                    return BUBBLE_COLORS[i % BUBBLE_COLORS.length];
+                  })()
+                : BUBBLE_COLORS[i % BUBBLE_COLORS.length];
               return (
                 <PersonCircle key={p.id} emoji={p.emoji}
                   size={size} opacity={opacity}
@@ -936,7 +944,7 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
               <motion.div
                 animate={{ y: -15 }}
                 transition={{ duration: selfFloatData.floatDuration, repeat: Infinity, repeatType: 'mirror', ease: 'easeInOut', delay: selfFloatData.floatDelay + 0.6 }}
-                style={{ position: 'relative', width: SELF_SIZE, height: SELF_SIZE, borderRadius: '50%', overflow: 'hidden', border: myBubbleColor === 'rainbow' ? '2.5px solid transparent' : myBubbleColor === 'transparent' ? 'none' : `2.5px solid ${myBubbleColor}`, borderImage: myBubbleColor === 'rainbow' ? 'linear-gradient(135deg, #ff0000, #ff7700, #ffff00, #00ff00, #0000ff, #8b00ff) 1' : undefined, boxShadow: '0 0 24px rgba(124,111,232,0.6), 0 0 48px rgba(124,111,232,0.2)' }}
+                style={{ position: 'relative', width: SELF_SIZE, height: SELF_SIZE, borderRadius: '50%', overflow: 'hidden', border: myBubbleColor === 'rainbow' ? '2.5px solid #ff6b6b' : myBubbleColor === 'transparent' ? 'none' : `2.5px solid ${myBubbleColor}`, boxShadow: '0 0 24px rgba(124,111,232,0.6), 0 0 48px rgba(124,111,232,0.2)' }}
               >
                 {selfImage ? <img src={selfImage} alt="自分のミーム" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
               </motion.div>
@@ -952,6 +960,8 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
                 cx={cx}
                 cy={cy}
                 selfSize={SELF_SIZE}
+                borderColor={myBubbleColor}
+                textColor={bubbleTextColor}
               />
             )}
 
@@ -977,18 +987,18 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
       ))}
 
       {/* ── 入力欄（キーボードが出ても固定） ── */}
-      <div style={{ position: 'fixed', bottom: navHeight + keyboardHeight, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 390, zIndex: 200, background: 'linear-gradient(to top, rgba(10,10,26,0.85) 60%, transparent)', backdropFilter: 'none', WebkitBackdropFilter: 'none', borderTop: 'none' }}>
+      <div style={{ position: 'fixed', bottom: keyboardHeight > 0 ? keyboardHeight : navHeight, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 390, zIndex: 200, background: 'transparent', transition: 'bottom 0.25s ease' }}>
         {/* 入力欄 */}
         <div style={{ padding: '10px 16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, borderRadius: 22, padding: '8px 12px 8px 14px', background: 'rgba(255,255,255,0.12)', border: myBubbleColor === 'rainbow' ? '1px solid transparent' : `1px solid ${myBubbleColor}40`, borderImage: myBubbleColor === 'rainbow' ? 'linear-gradient(135deg, #ff0000,#ff7700,#ffff00,#00ff00,#0000ff,#8b00ff) 1' : undefined, boxShadow: 'none' }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, borderRadius: 22, padding: '8px 12px 8px 14px', background: 'rgba(255,255,255,0.10)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', border: myBubbleColor === 'rainbow' ? '1.5px solid rgba(255,107,107,0.9)' : `1.5px solid ${myBubbleColor}`, boxShadow: myBubbleColor === 'rainbow' ? '0 0 12px rgba(255,107,107,0.4)' : `0 0 12px ${myBubbleColor}66` }}>
               <input
                 type="text"
                 value={inputText}
                 onChange={e => setInputText(e.target.value.slice(0, MAX_CHARS))}
                 onKeyDown={e => e.key === 'Enter' && handleSend()}
                 placeholder="今どうしてる？..."
-                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 14, color: '#fff' }}
+                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 14, color: inputTextColor, ['--placeholder-color' as string]: tod === 'morning' || tod === 'day' ? 'rgba(10,10,30,0.4)' : 'rgba(255,255,255,0.28)' }}
               />
               <span style={{ fontSize: 11, flexShrink: 0, fontVariantNumeric: 'tabular-nums', color: inputText.length >= MAX_CHARS ? '#e63946' : 'rgba(255,255,255,0.28)' }}>
                 {MAX_CHARS - inputText.length}
@@ -1046,7 +1056,7 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
           40%      { opacity: 0.04; transform: scale(0.4); }
           70%      { opacity: var(--star-op, 0.8); transform: scale(1.1); }
         }
-        input::placeholder { color: rgba(255,255,255,0.28); }
+        input::placeholder { color: var(--placeholder-color, rgba(255,255,255,0.28)); }
         button:active { transform: scale(0.93); }
       `}</style>
 
@@ -1073,23 +1083,49 @@ function BubbleV2PageInner() {
   const [memeImage, setMemeImage] = useState(() =>
     typeof window !== 'undefined' ? localStorage.getItem('sync_meme_image') || '' : ''
   );
-  const [myBubbleColor, setMyBubbleColor] = useState(() =>
-    typeof window !== 'undefined' ? localStorage.getItem('sync_my_bubble_color') || 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.65)'
+  const [myBubbleColor, setMyBubbleColor] = useState(() => {
+    if (typeof window === 'undefined') return 'rgba(255,255,255,0.65)';
+    try {
+      const style = localStorage.getItem('bubble_style');
+      if (style) {
+        const parsed = JSON.parse(style);
+        if (parsed.borderColor && parsed.borderColor !== 'none') {
+          return parsed.borderColor;
+        }
+      }
+    } catch {}
+    return 'rgba(255,255,255,0.65)';
+  });
+  const [bubbleTextColor, setBubbleTextColor] = useState(() =>
+    typeof window !== 'undefined' ? localStorage.getItem('sync_bubble_text_color') || '#ffffff' : '#ffffff'
   );
 
   // localStorageの変更を検知して反映
   useEffect(() => {
     const handleStorage = () => {
       setMemeImage(localStorage.getItem('sync_meme_image') || '');
-      setMyBubbleColor(localStorage.getItem('sync_my_bubble_color') || 'rgba(255,255,255,0.65)');
+    };
+    const syncColor = () => {
+      try {
+        const style = localStorage.getItem('bubble_style');
+        if (style) {
+          const parsed = JSON.parse(style);
+          if (parsed.borderColor && parsed.borderColor !== 'none') {
+            setMyBubbleColor(parsed.borderColor);
+          }
+        }
+      } catch {}
+      setBubbleTextColor(localStorage.getItem('sync_bubble_text_color') || '#ffffff');
     };
     window.addEventListener('storage', handleStorage);
-    window.addEventListener('sync_bubble_color_changed', handleStorage);
-    window.addEventListener('focus', handleStorage);
+    window.addEventListener('storage', syncColor);
+    window.addEventListener('sync_bubble_color_changed', syncColor);
+    window.addEventListener('focus', syncColor);
     return () => {
       window.removeEventListener('storage', handleStorage);
-      window.removeEventListener('sync_bubble_color_changed', handleStorage);
-      window.removeEventListener('focus', handleStorage);
+      window.removeEventListener('storage', syncColor);
+      window.removeEventListener('sync_bubble_color_changed', syncColor);
+      window.removeEventListener('focus', syncColor);
     };
   }, []);
 
@@ -1132,7 +1168,7 @@ function BubbleV2PageInner() {
           </motion.div>
         ) : (
           <motion.div key="bubble" initial={{ opacity: 0, scale: 1.04 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.35 }} style={{ height: '100dvh' }}>
-            <BubbleScreen selfImage={memeImage} onChangeMeme={handleChangeMeme} user={user} profile={profile} myBubbleColor={myBubbleColor} />
+            <BubbleScreen selfImage={memeImage} onChangeMeme={handleChangeMeme} user={user} profile={profile} myBubbleColor={myBubbleColor} bubbleTextColor={bubbleTextColor} />
           </motion.div>
         )}
       </AnimatePresence>

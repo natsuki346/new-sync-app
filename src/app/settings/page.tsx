@@ -406,9 +406,12 @@ function HueSlider({
   const [isDefault, setIsDefault] = useState(!value)
 
   const handleChange = (h: number) => {
+    console.log('handleChange called:', h, 'label:', label)
     setHue(h)
     setIsDefault(false)
+    console.log('calling onChange with:', `hsl(${h}, 75%, 55%)`)
     onChange(`hsl(${h}, 75%, 55%)`)
+    console.log('onChange called!')
   }
 
   const handleDefault = () => {
@@ -631,7 +634,7 @@ export default function SettingsPage() {
 
   function setCardBg(v: string)       { setCardBgState(v);        localStorage.setItem('sync_card_bg', v); }
   function setHashtagColor(v: string) { setHashtagColorState(v); if (v) localStorage.setItem('sync_hashtag_color', v); else localStorage.removeItem('sync_hashtag_color'); }
-  function setMyBubbleColor(v: string)    { setMyBubbleColorState(v);    localStorage.setItem('sync_my_bubble_color',    v);    window.dispatchEvent(new Event('sync_bubble_color_changed')); }
+  function setMyBubbleColor(v: string)    { console.log('setMyBubbleColor called:', v); setMyBubbleColorState(v);    localStorage.setItem('sync_my_bubble_color',    v);    window.dispatchEvent(new Event('sync_bubble_color_changed')); }
   function setTheirBubbleColor(v: string) { setTheirBubbleColorState(v); localStorage.setItem('sync_their_bubble_color', v); }
   function setPostTextColor(v: string)   { setPostTextColorState(v);   if (v) localStorage.setItem('sync_post_text_color',   v); else localStorage.removeItem('sync_post_text_color'); }
   function setMyMsgColor(v: string)      { setMyMsgColorState(v);      if (v) localStorage.setItem('sync_my_msg_color',       v); else localStorage.removeItem('sync_my_msg_color'); }
@@ -641,6 +644,7 @@ export default function SettingsPage() {
     setBubbleStyleState(prev => {
       const next = { ...prev, ...patch };
       localStorage.setItem('bubble_style', JSON.stringify(next));
+      window.dispatchEvent(new Event('sync_bubble_color_changed'));
       return next;
     });
   }
