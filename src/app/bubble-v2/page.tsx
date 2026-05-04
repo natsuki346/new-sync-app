@@ -907,18 +907,7 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
               const size        = pos.ring === 1 ? 56 : 38;
               const opacity     = pos.ring === 1 ? 0.88 : 0.62;
               const bd          = blinkData.current[i];
-              const borderColor = p.isOwn
-                ? (() => {
-                    try {
-                      const style = localStorage.getItem('bubble_style');
-                      if (style) {
-                        const parsed = JSON.parse(style);
-                        if (parsed.borderColor && parsed.borderColor !== 'none') return parsed.borderColor;
-                      }
-                    } catch {}
-                    return BUBBLE_COLORS[i % BUBBLE_COLORS.length];
-                  })()
-                : BUBBLE_COLORS[i % BUBBLE_COLORS.length];
+              const borderColor = BUBBLE_COLORS[i % BUBBLE_COLORS.length];
               return (
                 <PersonCircle key={p.id} emoji={p.emoji}
                   size={size} opacity={opacity}
