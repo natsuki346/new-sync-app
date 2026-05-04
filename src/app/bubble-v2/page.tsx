@@ -50,8 +50,16 @@ function makeFloatData() {
   };
 }
 
-// ── 住人データ ───────────────────────────────────────────────────────────
+// ── 絵文字プール（住人アイコンに使用） ─────────────────────────────────────
 
+const EMOJI_POOL = [
+  '😊','🎵','🌸','🍜','🎲','☕','🍻','🌙','⚡','🦁',
+  '🐻','🌊','🎸','🦋','🌻','🍎','🎯','🌈','🚀','💎',
+  '🎭','🦊','🐸','🌿','🎪','🏄','🌺','🎨','🦄',
+];
+
+// ── モックデータ（フォールバック用・実データ取得成功時は使用しない） ──────────
+/*
 const PEOPLE: { id: number; emoji: string; messages: [string, string, string] }[] = [
   { id:  1, emoji: '😊', messages: ['今日いい天気！',      '散歩してきた',    'いい朝だ〜'] },
   { id:  2, emoji: '🎵', messages: ['音楽最高♪',          'ライブ行きたい',   '新曲きた！'] },
@@ -83,11 +91,20 @@ const PEOPLE: { id: number; emoji: string; messages: [string, string, string] }[
   { id: 28, emoji: '🎨', messages: ['絵描いてた',          '展覧会行った',     'インスタ映え'] },
   { id: 29, emoji: '🦄', messages: ['夢みてた',            'ファンタジーいい', '現実逃避中...'] },
 ];
+*/
 
 // ── タップモーダル関連（bubble/page.tsx BubbleActionMenu と同一デザイン） ──
 
 const REACT_EMOJIS = ['❤️', '😂', '😮', '😢', '👏'] as const;
 const ACTION_MENU_W = 264;
+
+// ライブユーザー型（Supabaseから取得した実データ or モックのフォールバック）
+interface LivePerson {
+  id:       number;   // 配列インデックス（positions/blinkData と対応）
+  userId:   string;   // Supabase UUID（プロフィール・DM遷移に使用）
+  emoji:    string;
+  messages: [string, string, string];
+}
 
 interface TapMenu {
   personId:    number;
@@ -95,18 +112,104 @@ interface TapMenu {
   text:        string;
   clientX:     number;
   clientY:     number;
+  userId:      string;
 }
 
 function TapModal({ menu, onClose }: {
   menu:    TapMenu;
   onClose: () => void;
 }) {
-  const [flyEmoji, setFlyEmoji] = useState<{ emoji: string; x: number; y: number } | null>(null);
+  const router = useRouter();
+  const { user } = useAuth();
+  const [flyEmoji,  setFlyEmoji]  = useState<{ emoji: string; x: number; y: number } | null>(null);
+  const [dmMode,    setDmMode]    = useState(false);
+  const [dmText,    setDmText]    = useState('');
+  const [dmSending, setDmSending] = useState(false);
+  const [dmError,   setDmError]   = useState('');
 
   function handleReact(emoji: string, e: React.MouseEvent<HTMLButtonElement>) {
     const r = e.currentTarget.getBoundingClientRect();
     setFlyEmoji({ emoji, x: r.left + r.width / 2, y: r.top });
     setTimeout(onClose, 650);
+  }
+
+  // DM ルームを取得 or 新規作成してconvIdを返す
+  // 相手が profiles に存在しない場合は 'USER_NOT_FOUND' をスロー
+  async function getOrCreateConv(): Promise<string> {
+    if (!user) throw new Error('NOT_LOGGED_IN');
+
+    // 相手ユーザーの存在確認（FK 違反を事前に防ぐ）
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: targetProfile } = await (supabase as any)
+      .from('profiles').select('id').eq('id', menu.userId).maybeSingle();
+    if (!targetProfile) throw new Error('USER_NOT_FOUND');
+
+    // 自分が参加している会話IDを取得
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: myConvIds } = await (supabase as any)
+      .from('conversation_members').select('conversation_id').eq('user_id', user.id);
+    const myIds: string[] = (myConvIds ?? []).map((r: { conversation_id: string }) => r.conversation_id);
+
+    if (myIds.length > 0) {
+      // 相手も参加している会話IDを検索
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: shared } = await (supabase as any)
+        .from('conversation_members').select('conversation_id')
+        .eq('user_id', menu.userId).in('conversation_id', myIds);
+      const sharedIds: string[] = (shared ?? []).map((r: { conversation_id: string }) => r.conversation_id);
+      if (sharedIds.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: existing } = await (supabase as any)
+          .from('conversations').select('id').eq('type', 'dm').in('id', sharedIds);
+        if (existing && existing.length > 0) return existing[0].id as string;
+      }
+    }
+
+    // 新規 DM ルーム作成
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: newConv, error: convErr } = await (supabase as any)
+      .from('conversations').insert({ type: 'dm', created_by: user.id }).select('id').single();
+    if (convErr || !newConv) throw new Error('CONV_CREATE_FAILED');
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { error: memberErr } = await (supabase as any).from('conversation_members').insert([
+      { conversation_id: newConv.id, user_id: user.id },
+      { conversation_id: newConv.id, user_id: menu.userId },
+    ]);
+    if (memberErr) throw new Error('MEMBER_INSERT_FAILED');
+
+    return newConv.id as string;
+  }
+
+  async function handleSendDM() {
+    if (!dmText.trim() || !user || dmSending) return;
+    setDmSending(true);
+    setDmError('');
+    try {
+      const convId = await getOrCreateConv();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any).from('messages').insert({
+        conversation_id: convId,
+        user_id:         user.id,
+        content:         dmText.trim(),
+        message_type:    'text',
+      });
+      if (error) throw new Error('MSG_INSERT_FAILED');
+      setDmText('');
+      onClose();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '';
+      if (msg === 'USER_NOT_FOUND') {
+        setDmError('このユーザーにはDMを送れません');
+      } else if (msg === 'NOT_LOGGED_IN') {
+        setDmError('ログインが必要です');
+      } else {
+        setDmError('送信に失敗しました');
+        console.error('[bubble-v2] handleSendDM error:', e);
+      }
+    } finally {
+      setDmSending(false);
+    }
   }
 
   // コンテナ（data-bubble-container）の実測 rect を取得
@@ -162,51 +265,99 @@ function TapModal({ menu, onClose }: {
         }}
         onClick={e => e.stopPropagation()}
       >
-        {/* ユーザー情報 */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-          <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'rgba(255,26,26,0.15)', border: '1px solid rgba(255,26,26,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0 }}>
-            {menu.personEmoji}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#FF1A1A', lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {menu.text}
+        {dmMode ? (
+          /* ── DM入力モード ── */
+          <>
+            {/* ヘッダー：相手アバター＋バブルテキスト＋✕ */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(17,138,178,0.20)', border: '1px solid rgba(17,138,178,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 15, flexShrink: 0 }}>
+                {menu.personEmoji}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#118AB2', lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {menu.text}
+                </div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.38)' }}>DM を送る</div>
+              </div>
+              <button
+                onClick={onClose}
+                style={{ width: 24, height: 24, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: 'rgba(255,255,255,0.55)', cursor: 'pointer', flexShrink: 0, WebkitTapHighlightColor: 'transparent' }}
+              >✕</button>
             </div>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.38)', lineHeight: 1.2 }}>バブル</div>
-          </div>
-        </div>
+            {/* エラー表示 */}
+            {dmError && (
+              <div style={{ fontSize: 11, color: '#FF6B6B', marginBottom: 8, textAlign: 'center' }}>{dmError}</div>
+            )}
+            {/* 入力ボックス＋送信ボタン */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="text"
+                value={dmText}
+                onChange={e => { setDmText(e.target.value); setDmError(''); }}
+                onKeyDown={e => e.key === 'Enter' && handleSendDM()}
+                placeholder="メッセージを送る..."
+                autoFocus
+                style={{ flex: 1, background: 'rgba(255,255,255,0.08)', border: `1px solid ${dmError ? 'rgba(255,107,107,0.5)' : 'rgba(255,255,255,0.15)'}`, borderRadius: 20, padding: '9px 14px', fontSize: 13, color: '#fff', outline: 'none', minWidth: 0 }}
+              />
+              <button
+                onClick={handleSendDM}
+                disabled={!dmText.trim() || dmSending}
+                style={{ width: 36, height: 36, borderRadius: '50%', background: dmText.trim() ? 'linear-gradient(135deg,#118AB2,#7C6FE8)' : 'rgba(255,255,255,0.10)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: dmText.trim() ? 'pointer' : 'default', flexShrink: 0, fontSize: 16, color: '#fff', transition: 'background 0.2s', WebkitTapHighlightColor: 'transparent' }}
+              >
+                {dmSending ? '…' : '↑'}
+              </button>
+            </div>
+          </>
+        ) : (
+          /* ── 通常モード ── */
+          <>
+            {/* ユーザー情報 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <div style={{ width: 24, height: 24, borderRadius: '50%', background: 'rgba(255,26,26,0.15)', border: '1px solid rgba(255,26,26,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, flexShrink: 0 }}>
+                {menu.personEmoji}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#FF1A1A', lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {menu.text}
+                </div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.38)', lineHeight: 1.2 }}>バブル</div>
+              </div>
+            </div>
 
-        {/* リアクション行（常に表示） */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-          {REACT_EMOJIS.map(emoji => (
+            {/* リアクション行 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
+              {REACT_EMOJIS.map(emoji => (
+                <button
+                  key={emoji}
+                  onClick={e => handleReact(emoji, e)}
+                  style={{ flex: 1, height: 44, border: '1px solid rgba(255,255,255,0.10)', borderRadius: 12, background: 'rgba(255,255,255,0.06)', fontSize: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', transition: 'transform 0.12s ease, background 0.12s ease' }}
+                  onPointerEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.13)'; (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.18)'; }}
+                  onPointerLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)'; (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'; }}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+
+            {/* DM を送る */}
             <button
-              key={emoji}
-              onClick={e => handleReact(emoji, e)}
-              style={{ flex: 1, height: 44, border: '1px solid rgba(255,255,255,0.10)', borderRadius: 12, background: 'rgba(255,255,255,0.06)', fontSize: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', transition: 'transform 0.12s ease, background 0.12s ease' }}
-              onPointerEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.13)'; (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.18)'; }}
-              onPointerLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.06)'; (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'; }}
+              onClick={() => setDmMode(true)}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 12px', borderRadius: 12, marginBottom: 8, background: 'rgba(17,138,178,0.10)', border: '1px solid rgba(17,138,178,0.22)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', boxSizing: 'border-box' }}
             >
-              {emoji}
+              <span style={{ fontSize: 15 }}>✉️</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: '#118AB2' }}>DMを送る</span>
             </button>
-          ))}
-        </div>
 
-        {/* DM を送る */}
-        <button
-          onClick={onClose}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 12px', borderRadius: 12, marginBottom: 8, background: 'rgba(17,138,178,0.10)', border: '1px solid rgba(17,138,178,0.22)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', boxSizing: 'border-box' }}
-        >
-          <span style={{ fontSize: 15 }}>✉️</span>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#118AB2' }}>DMを送る</span>
-        </button>
-
-        {/* プロフィールを見る */}
-        <button
-          onClick={onClose}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 12px', borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', boxSizing: 'border-box' }}
-        >
-          <span style={{ fontSize: 15 }}>👤</span>
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.80)' }}>プロフィールを見る</span>
-        </button>
+            {/* プロフィールを見る */}
+            <button
+              onClick={() => { onClose(); router.push(`/profile/${menu.userId}`); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 12px', borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', boxSizing: 'border-box' }}
+            >
+              <span style={{ fontSize: 15 }}>👤</span>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.80)' }}>プロフィールを見る</span>
+            </button>
+          </>
+        )}
       </div>
     </>
   );
@@ -331,20 +482,26 @@ function PersonCircle({ emoji, size, opacity, floatDuration, floatDelay, message
         activeBubbleRef.current = msg;
         setIsNew(true);
         isNewTimer = setTimeout(() => setIsNew(false), 400);
-        dangerTimer = setTimeout(() => setIsDanger(true), PERSON_BUBBLE_SHOW_MS - DANGER_THRESHOLD * 1000);
-
+        // 表示から2〜6秒のランダムタイミングでポップ
+        const showMs = 2000 + Math.random() * 4000;
+        const dangerStartMs = showMs - DANGER_THRESHOLD * 1000;
+        if (dangerStartMs > 0) {
+          dangerTimer = setTimeout(() => setIsDanger(true), dangerStartMs);
+        }
         popTimer = setTimeout(() => {
           const el = bubbleWrapperRef.current;
           if (el) {
             el.style.animation = 'bubbleFade 0.3s ease-out forwards';
           }
+          // バブル位置でパーティクルバーストを発動（el の有無に関わらず常に実行）
+          onPop(x, y - size / 2);
           clearTimer = setTimeout(() => {
             activeBubbleRef.current = null;
             setIsDanger(false);
             if (el) el.style.animation = '';
             scheduleNext();
           }, 400);
-        }, PERSON_BUBBLE_SHOW_MS - 400);
+        }, showMs - 400);
       }, PERSON_BUBBLE_MIN_MS + Math.random() * PERSON_BUBBLE_RANGE_MS);
     }
 
@@ -633,6 +790,65 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
   const NEBULA = useMemo(() => Array.from({ length: 6  }, (_, i) => ({ id: i, left: (Math.sin(i*4.123+0.7)*0.5+0.5)*100, top: (Math.sin(i*2.987+1.4)*0.5+0.5)*85, size: 90+(i%4)*62, color: ['rgba(70,30,160,0.055)','rgba(30,18,110,0.045)','rgba(90,50,190,0.06)','rgba(18,25,100,0.05)','rgba(50,18,130,0.045)','rgba(70,50,190,0.065)'][i] })), []);
   const CLOUDS = useMemo(() => Array.from({ length: 7  }, (_, i) => ({ id: i, left: (Math.sin(i*6.28+0.4)*0.5+0.5)*100, top: 20+(Math.sin(i*3.14+1.1)*0.5+0.5)*55, w: 100+(i%4)*55, h: 26+(i%3)*12 })), []);
 
+  // ライブユーザーデータ（profiles から実ユーザーを取得）
+  const [livePeople, setLivePeople] = useState<LivePerson[]>([]);
+
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      try {
+        // 1. profiles から自分以外を最大29人取得
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: profilesData, error: profErr } = await (supabase as any)
+          .from('profiles')
+          .select('id, username, display_name')
+          .neq('id', user.id)
+          .limit(29);
+
+        if (profErr) { console.error('[bubble-v2] profiles fetch error:', profErr); return; }
+        if (!profilesData || profilesData.length === 0) return;
+
+        // 2. 各ユーザーの有効期限内バブルを最新順で取得（メッセージとして使用）
+        const userIds = (profilesData as Array<{ id: string }>).map(p => p.id);
+        const now = new Date().toISOString();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: bubblesData } = await (supabase as any)
+          .from('bubbles')
+          .select('user_id, content')
+          .in('user_id', userIds)
+          .gt('expires_at', now)
+          .order('created_at', { ascending: false })
+          .limit(200);
+
+        // user_id → コンテンツ配列
+        const bubblesByUser: Record<string, string[]> = {};
+        for (const b of (bubblesData ?? []) as Array<{ user_id: string; content: string }>) {
+          if (!bubblesByUser[b.user_id]) bubblesByUser[b.user_id] = [];
+          if (bubblesByUser[b.user_id].length < 3) bubblesByUser[b.user_id].push(b.content);
+        }
+
+        // 3. LivePerson 配列に変換
+        const people: LivePerson[] = (profilesData as Array<{ id: string; username: string | null; display_name: string | null }>)
+          .map((prof, i) => {
+            const fallbackName = prof.display_name || prof.username || '...';
+            const msgs = [...(bubblesByUser[prof.id] ?? [])];
+            while (msgs.length < 3) msgs.push(fallbackName);
+            return {
+              id:       i,
+              userId:   prof.id,
+              emoji:    EMOJI_POOL[i % EMOJI_POOL.length],
+              messages: msgs.slice(0, 3) as [string, string, string],
+            };
+          });
+
+        setLivePeople(people);
+      } catch (e) {
+        console.error('[bubble-v2] livePeople fetch error:', e);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   // 自分バブル
   const [selfBubble,       setSelfBubble]       = useState<{ id: string; text: string } | null>(null);
   const [selfBubbleDanger, setSelfBubbleDanger] = useState(false);
@@ -666,7 +882,7 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
   // BottomNav の実測高さ
   const navHeight = 80;
 
-  const blinkData = useRef(PEOPLE.map(() => makeFloatData()));
+  const blinkData = useRef(Array.from({ length: 29 }, makeFloatData));
 
   // 時間帯（1分ごと更新）
   useEffect(() => {
@@ -701,8 +917,18 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
   // タップモーダル
   const [tapMenu, setTapMenu] = useState<TapMenu | null>(null);
 
-  function openModal(p: typeof PEOPLE[0], clientX: number, clientY: number, text: string) {
-    setTapMenu({ personId: p.id, personEmoji: p.emoji, text, clientX, clientY });
+  // 実データがあれば使用、なければ EMOJI_POOL ベースのフォールバック
+  const displayPeople: LivePerson[] = livePeople.length > 0
+    ? livePeople
+    : EMOJI_POOL.map((emoji, i) => ({
+        id:       i,
+        userId:   `mock-${i + 1}`,
+        emoji,
+        messages: ['...', '...', '...'] as [string, string, string],
+      }));
+
+  function openModal(p: LivePerson, clientX: number, clientY: number, text: string) {
+    setTapMenu({ personId: p.id, personEmoji: p.emoji, text, clientX, clientY, userId: p.userId });
   }
 
   // ReactionFloatingEffect 用（bubble/page.tsx と同一）
@@ -925,8 +1151,8 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
             dragMomentum={true}
             style={{ position: 'absolute', inset: 0, touchAction: 'none' }}
           >
-            {/* 29人（ランダム配置） */}
-            {PEOPLE.map((p, i) => {
+            {/* 住人（実データ or モックフォールバック） */}
+            {displayPeople.map((p, i) => {
               const pos         = positions[i];
               if (!pos) return null;
               const size        = pos.ring === 1 ? 56 : 38;
@@ -934,7 +1160,7 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
               const bd          = blinkData.current[i];
               const borderColor = BUBBLE_COLORS[i % BUBBLE_COLORS.length];
               return (
-                <PersonCircle key={p.id} emoji={p.emoji}
+                <PersonCircle key={p.userId} emoji={p.emoji}
                   size={size} opacity={opacity}
                   floatDuration={bd.floatDuration} floatDelay={bd.floatDelay}
                   messages={p.messages}
