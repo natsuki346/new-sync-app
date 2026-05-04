@@ -450,20 +450,19 @@ function HueSlider({
             pointerEvents: 'none',
           }} />
           {/* サムドット */}
-          {!isDefault && (
-            <div style={{
-              position: 'absolute',
-              left: `calc(${(hue / 360) * 100}% - 10px)`,
-              width: 20, height: 20,
-              borderRadius: '50%',
-              background: `hsl(${hue}, 75%, 55%)`,
-              border: '3px solid #ffffff',
-              boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
-              pointerEvents: 'none',
-              zIndex: 2,
-              transition: 'left 0.05s',
-            }} />
-          )}
+          <div style={{
+            position: 'absolute',
+            left: `calc(${(hue / 360) * 100}% - 10px)`,
+            opacity: isDefault ? 0.4 : 1,
+            width: 20, height: 20,
+            borderRadius: '50%',
+            background: `hsl(${hue}, 75%, 55%)`,
+            border: '3px solid #ffffff',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
+            pointerEvents: 'none',
+            zIndex: 2,
+            transition: 'left 0.05s',
+          }} />
           {/* 透明スライダー（操作用） */}
           <input
             type="range"
@@ -632,7 +631,7 @@ export default function SettingsPage() {
 
   function setCardBg(v: string)       { setCardBgState(v);        localStorage.setItem('sync_card_bg', v); }
   function setHashtagColor(v: string) { setHashtagColorState(v); if (v) localStorage.setItem('sync_hashtag_color', v); else localStorage.removeItem('sync_hashtag_color'); }
-  function setMyBubbleColor(v: string)    { setMyBubbleColorState(v);    localStorage.setItem('sync_my_bubble_color',    v); }
+  function setMyBubbleColor(v: string)    { setMyBubbleColorState(v);    localStorage.setItem('sync_my_bubble_color',    v);    window.dispatchEvent(new Event('sync_bubble_color_changed')); }
   function setTheirBubbleColor(v: string) { setTheirBubbleColorState(v); localStorage.setItem('sync_their_bubble_color', v); }
   function setPostTextColor(v: string)   { setPostTextColorState(v);   if (v) localStorage.setItem('sync_post_text_color',   v); else localStorage.removeItem('sync_post_text_color'); }
   function setMyMsgColor(v: string)      { setMyMsgColorState(v);      if (v) localStorage.setItem('sync_my_msg_color',       v); else localStorage.removeItem('sync_my_msg_color'); }

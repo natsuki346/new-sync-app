@@ -936,7 +936,7 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
               <motion.div
                 animate={{ y: -15 }}
                 transition={{ duration: selfFloatData.floatDuration, repeat: Infinity, repeatType: 'mirror', ease: 'easeInOut', delay: selfFloatData.floatDelay + 0.6 }}
-                style={{ position: 'relative', width: SELF_SIZE, height: SELF_SIZE, borderRadius: '50%', overflow: 'hidden', border: `2.5px solid ${myBubbleColor}`, boxShadow: '0 0 24px rgba(124,111,232,0.6), 0 0 48px rgba(124,111,232,0.2)' }}
+                style={{ position: 'relative', width: SELF_SIZE, height: SELF_SIZE, borderRadius: '50%', overflow: 'hidden', border: myBubbleColor === 'rainbow' ? '2.5px solid transparent' : myBubbleColor === 'transparent' ? 'none' : `2.5px solid ${myBubbleColor}`, borderImage: myBubbleColor === 'rainbow' ? 'linear-gradient(135deg, #ff0000, #ff7700, #ffff00, #00ff00, #0000ff, #8b00ff) 1' : undefined, boxShadow: '0 0 24px rgba(124,111,232,0.6), 0 0 48px rgba(124,111,232,0.2)' }}
               >
                 {selfImage ? <img src={selfImage} alt="自分のミーム" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : null}
               </motion.div>
@@ -981,7 +981,7 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
         {/* 入力欄 */}
         <div style={{ padding: '10px 16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%' }}>
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, borderRadius: 22, padding: '8px 12px 8px 14px', background: 'rgba(255,255,255,0.12)', border: `1px solid ${myBubbleColor}40`, boxShadow: 'none' }}>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, borderRadius: 22, padding: '8px 12px 8px 14px', background: 'rgba(255,255,255,0.12)', border: myBubbleColor === 'rainbow' ? '1px solid transparent' : `1px solid ${myBubbleColor}40`, borderImage: myBubbleColor === 'rainbow' ? 'linear-gradient(135deg, #ff0000,#ff7700,#ffff00,#00ff00,#0000ff,#8b00ff) 1' : undefined, boxShadow: 'none' }}>
               <input
                 type="text"
                 value={inputText}
@@ -1084,9 +1084,11 @@ function BubbleV2PageInner() {
       setMyBubbleColor(localStorage.getItem('sync_my_bubble_color') || 'rgba(255,255,255,0.65)');
     };
     window.addEventListener('storage', handleStorage);
+    window.addEventListener('sync_bubble_color_changed', handleStorage);
     window.addEventListener('focus', handleStorage);
     return () => {
       window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('sync_bubble_color_changed', handleStorage);
       window.removeEventListener('focus', handleStorage);
     };
   }, []);
