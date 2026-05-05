@@ -1199,17 +1199,26 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
   const cy = h / 2;
 
   const positions = useMemo(() => {
-    const PADDING      = 30;
-    const OVERFLOW     = 300; // ドラッグで見える範囲（3倍拡張）
+    // dragConstraints ±300、PADDING=30 → 配置範囲 ±270 をビューポート中心基準で設定
+    const DRAG       = 300;
+    const PADDING    = 30;
     const MIN_DIST_SELF  = 160;
-    const MIN_DIST_OTHER = 85;
-    const MAX_TRIES    = 200;
+    const MIN_DIST_OTHER = 75;
+    const MAX_TRIES  = 200;
     const result: { x: number; y: number; ring: 1 | 2 }[] = [];
+
+    // 配置可能領域: viewport中心(cx,cy)を基準に ±(DRAG-PADDING) = ±270
+    const rangeX = DRAG - PADDING; // 270
+    const rangeY = DRAG - PADDING; // 270
+    const xMin = cx - rangeX;
+    const xMax = cx + rangeX;
+    const yMin = cy - rangeY;
+    const yMax = cy + rangeY;
 
     for (let i = 0; i < 29; i++) {
       for (let t = 0; t < MAX_TRIES; t++) {
-        const x = -OVERFLOW + PADDING + Math.random() * (w + OVERFLOW * 2 - PADDING * 2);
-        const y = -OVERFLOW + PADDING + Math.random() * (h + OVERFLOW * 2 - PADDING * 2);
+        const x = xMin + Math.random() * (xMax - xMin);
+        const y = yMin + Math.random() * (yMax - yMin);
         if (Math.hypot(x - cx, y - cy) < MIN_DIST_SELF) continue;
         if (result.some(p => Math.hypot(p.x - x, p.y - y) < MIN_DIST_OTHER)) continue;
         result.push({ x, y, ring: (i < 10 ? 1 : 2) as 1 | 2 });
