@@ -111,6 +111,39 @@ export default function ChatDetailPage() {
   const [reportDone,        setReportDone]        = useState(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── 未読リクエスト（pending DM）──────────────────────────────────
+  type PendingMsg = { id: string; text: string; isHidden: boolean };
+  const [convStatus,   setConvStatus]   = useState<'pending' | 'approved' | 'blocked' | null>(null);
+  const [pendingMsgs,  setPendingMsgs]  = useState<PendingMsg[]>([]);
+
+  async function updateConvStatus(newStatus: 'approved' | 'blocked') {
+    if (!convId) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase as any).from('conversations').update({ status: newStatus }).eq('id', convId);
+    if (newStatus === 'approved') {
+      setConvStatus('approved');
+    } else {
+      router.back();
+    }
+  }
+
+  async function handlePendingReport() {
+    if (!convId || !otherUserId || !user) return;
+    await fetch('/api/report', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        contentId:       convId,
+        contentType:     'dm',
+        reason:          'harassment',
+        contentSnapshot: pendingMsgs.map(m => m.text).join(' | ').slice(0, 500),
+        reportedUserId:  otherUserId,
+        reporterId:      user.id,
+      }),
+    }).catch(() => {});
+    await updateConvStatus('blocked');
+  }
+
   const bottomRef      = useRef<HTMLDivElement>(null);
   const fileInputRef   = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -360,6 +393,41 @@ export default function ChatDetailPage() {
     })();
 
     return () => { cancelled = true; };
+  }, [convId, user?.id]);
+
+  // ── conversation status（pending リクエスト判定）────────────────
+  useEffect(() => {
+    if (!convId || !user?.id) return;
+    (async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: conv } = await (supabase as any)
+        .from('conversations')
+        .select('status')
+        .eq('id', convId)
+        .maybeSingle();
+
+      const status: 'pending' | 'approved' | 'blocked' = conv?.status ?? 'approved';
+      setConvStatus(status);
+
+      if (status === 'pending') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: msgs } = await (supabase as any)
+          .from('messages')
+          .select('id, content, is_hidden, user_id')
+          .eq('conversation_id', convId)
+          .neq('user_id', user.id)
+          .order('created_at', { ascending: true });
+
+        setPendingMsgs(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (msgs ?? []).map((m: any) => ({
+            id:       String(m.id),
+            text:     m.content ?? '',
+            isHidden: m.is_hidden ?? false,
+          }))
+        );
+      }
+    })();
   }, [convId, user?.id]);
 
   // ── Realtime メッセージ受信 ───────────────────────────────────
@@ -813,6 +881,48 @@ export default function ChatDetailPage() {
             )}
           </div>
         </>
+      )}
+
+      {/* ── 未読リクエスト UI（pending DM）──────────────────────────── */}
+      {convStatus === 'pending' && (
+        <div style={{ flexShrink: 0, background: 'var(--background)', borderBottom: '1px solid var(--surface-2)' }}>
+          {/* 赤い区切り＋件数ラベル（Slack風） */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px 6px' }}>
+            <div style={{ flex: 1, height: 1, background: 'rgba(255,60,60,0.45)' }} />
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,80,80,0.9)', whiteSpace: 'nowrap', padding: '2px 8px', background: 'rgba(255,60,60,0.10)', borderRadius: 999 }}>
+              未読メッセージ {pendingMsgs.length} 件
+            </span>
+            <div style={{ flex: 1, height: 1, background: 'rgba(255,60,60,0.45)' }} />
+          </div>
+          {/* 未読メッセージ一覧 */}
+          <div style={{ maxHeight: 180, overflowY: 'auto', padding: '0 16px 8px' }}>
+            {pendingMsgs.length === 0 ? (
+              <p style={{ fontSize: 12, color: 'var(--muted)', textAlign: 'center', padding: '8px 0' }}>メッセージがありません</p>
+            ) : pendingMsgs.map(m => (
+              <div key={m.id} style={{ marginBottom: 6, padding: '8px 12px', borderRadius: 10, background: m.isHidden ? 'rgba(255,60,60,0.10)' : 'var(--surface)', border: m.isHidden ? '1px solid rgba(255,60,60,0.40)' : '1px solid var(--surface-2)' }}>
+                {m.isHidden && (
+                  <p style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,80,80,0.9)', marginBottom: 2 }}>⚠️ AIが有害コンテンツを検知</p>
+                )}
+                <p style={{ fontSize: 13, color: 'var(--foreground)', margin: 0, wordBreak: 'break-word' }}>{m.text || '（画像・音声）'}</p>
+              </div>
+            ))}
+          </div>
+          {/* アクションボタン3つ */}
+          <div style={{ display: 'flex', gap: 8, padding: '8px 16px 12px' }}>
+            <button
+              onClick={() => updateConvStatus('blocked')}
+              style={{ flex: 1, padding: '9px 0', borderRadius: 10, border: '1px solid var(--surface-2)', background: 'var(--surface)', fontSize: 13, fontWeight: 600, color: 'var(--muted)', cursor: 'pointer' }}
+            >✕ 拒否</button>
+            <button
+              onClick={handlePendingReport}
+              style={{ flex: 1, padding: '9px 0', borderRadius: 10, border: '1px solid rgba(255,60,60,0.40)', background: 'rgba(255,60,60,0.10)', fontSize: 13, fontWeight: 600, color: 'rgba(255,80,80,0.9)', cursor: 'pointer' }}
+            >🚩 通報</button>
+            <button
+              onClick={() => updateConvStatus('approved')}
+              style={{ flex: 1, padding: '9px 0', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#7C6FE8,#D455A8)', fontSize: 13, fontWeight: 600, color: '#fff', cursor: 'pointer' }}
+            >✓ 承認</button>
+          </div>
+        </div>
       )}
 
       {/* ── メッセージエリア ──────────────────────────────────────── */}

@@ -169,10 +169,10 @@ function TapModal({ menu, onClose }: {
       }
     }
 
-    // 新規 DM ルーム作成
+    // 新規 DM ルーム作成（bubble からの初回DM は pending に設定）
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data: newConv, error: convErr } = await (supabase as any)
-      .from('conversations').insert({ type: 'dm', created_by: user.id }).select('id').single();
+      .from('conversations').insert({ type: 'dm', created_by: user.id, status: 'pending' }).select('id').single();
     if (convErr || !newConv) throw new Error('CONV_CREATE_FAILED');
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -190,6 +190,22 @@ function TapModal({ menu, onClose }: {
     setDmSending(true);
     setDmError('');
     try {
+      // 送信前に AI モデレーション（エラー時は送信継続）
+      try {
+        const modRes = await fetch('/api/moderate', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ text: dmText.trim(), contentId: 'dm-send', contentType: 'dm' }),
+        });
+        if (modRes.ok) {
+          const modData = await modRes.json() as { flagged: boolean };
+          if (modData.flagged) {
+            setDmError('このメッセージは送信できません');
+            return;
+          }
+        }
+      } catch { /* モデレーションエラーは無視して送信継続 */ }
+
       const convId = await getOrCreateConv();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error } = await (supabase as any).from('messages').insert({
@@ -913,26 +929,7 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
             };
           });
 
-        // モデレーション：各ユーザーの最新メッセージをスキャンし flagged を除外
-        const moderated: LivePerson[] = [];
-        await Promise.allSettled(
-          people.map(async (p) => {
-            const sampleText = p.messages.find(m => m !== '...' && m.length > 0);
-            if (!sampleText) { moderated.push(p); return; }
-            try {
-              const res = await fetch('/api/moderate', {
-                method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ text: sampleText, contentId: p.userId, contentType: 'bubble' }),
-              });
-              const data = await res.json() as { flagged: boolean };
-              if (!data.flagged) moderated.push(p);
-            } catch {
-              moderated.push(p); // エラー時は表示継続
-            }
-          })
-        );
-        setLivePeople(moderated);
+        setLivePeople(people);
       } catch (e) {
         console.error('[bubble-v2] livePeople fetch error:', e);
       }
