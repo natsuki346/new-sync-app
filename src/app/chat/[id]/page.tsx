@@ -103,6 +103,14 @@ export default function ChatDetailPage() {
   const [theirBubbleColor, setTheirBubbleColor] = useState('');
   const [otherUserId,      setOtherUserId]      = useState<string | null>(null);
 
+  // ── セキュリティ機能 ────────────────────────────────────────────
+  const [harassmentWarning, setHarassmentWarning] = useState(false);
+  const [reportingMsgId,    setReportingMsgId]    = useState<number | null>(null);
+  const [reportReason,      setReportReason]      = useState('');
+  const [reportSending,     setReportSending]     = useState(false);
+  const [reportDone,        setReportDone]        = useState(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const bottomRef      = useRef<HTMLDivElement>(null);
   const fileInputRef   = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -393,6 +401,39 @@ export default function ChatDetailPage() {
           };
 
           setMessages((prev) => [...prev, newMsg]);
+
+          // テキストメッセージをモデレーション（非同期・独立）
+          if (row.message_type === 'text' && row.content) {
+            fetch('/api/moderate', {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({ text: row.content, contentId: row.id, contentType: 'dm' }),
+            })
+              .then(r => r.json())
+              .then((data: { flagged: boolean; categories?: string[] }) => {
+                if (data.flagged) {
+                  setHarassmentWarning(true);
+                  if (data.categories?.includes('harassment')) {
+                    // 嫌がらせは自動通報（otherUserId が取得済みの場合）
+                    if (otherUserId && user) {
+                      fetch('/api/report', {
+                        method:  'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body:    JSON.stringify({
+                          contentId:       row.id,
+                          contentType:     'dm',
+                          reason:          'harassment',
+                          contentSnapshot: row.content,
+                          reportedUserId:  otherUserId,
+                          reporterId:      user.id,
+                        }),
+                      }).catch(() => {});
+                    }
+                  }
+                }
+              })
+              .catch(() => {});
+          }
         },
       )
       .subscribe();
@@ -717,6 +758,63 @@ export default function ChatDetailPage() {
         </div>
       </header>
 
+      {/* ── 嫌がらせ警告バナー ───────────────────────────────────── */}
+      {harassmentWarning && (
+        <div style={{ background: 'rgba(255,60,60,0.15)', borderBottom: '1px solid rgba(255,60,60,0.30)', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <span style={{ fontSize: 16 }}>⚠️</span>
+          <span style={{ fontSize: 12, color: 'rgba(255,120,120,0.95)', flex: 1 }}>有害コンテンツが検知されました。自動通報済みです。</span>
+          <button onClick={() => setHarassmentWarning(false)} style={{ fontSize: 11, color: 'rgba(255,120,120,0.7)', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px' }}>✕</button>
+        </div>
+      )}
+
+      {/* ── 通報モーダル ────────────────────────────────────────── */}
+      {reportingMsgId !== null && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 400 }} onClick={() => { setReportingMsgId(null); setReportReason(''); setReportDone(false); }} />
+          <div style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 32px)', maxWidth: 360, zIndex: 401, background: 'var(--surface)', border: '1px solid var(--surface-2)', borderRadius: 16, padding: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: 'rgba(255,100,100,0.9)', flex: 1 }}>🚩 通報する</span>
+              <button onClick={() => { setReportingMsgId(null); setReportReason(''); setReportDone(false); }} style={{ background: 'none', border: 'none', fontSize: 14, color: 'var(--muted)', cursor: 'pointer' }}>✕</button>
+            </div>
+            {reportDone ? (
+              <div style={{ textAlign: 'center', padding: '12px 0', fontSize: 13, color: '#4ade80', fontWeight: 600 }}>✓ 通報を受け付けました</div>
+            ) : (
+              <>
+                {(['spam', 'inappropriate', 'harassment', 'other'] as const).map((val) => {
+                  const labels: Record<string, string> = { spam: 'スパム', inappropriate: '不適切なコンテンツ', harassment: '嫌がらせ', other: 'その他' };
+                  return (
+                    <button key={val} onClick={() => setReportReason(val)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', borderRadius: 10, marginBottom: 6, background: reportReason === val ? 'rgba(255,80,80,0.18)' : 'rgba(255,255,255,0.04)', border: `1px solid ${reportReason === val ? 'rgba(255,80,80,0.45)' : 'var(--surface-2)'}`, cursor: 'pointer', textAlign: 'left', boxSizing: 'border-box' }}>
+                      <span style={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${reportReason === val ? '#ff5050' : 'rgba(255,255,255,0.3)'}`, background: reportReason === val ? '#ff5050' : 'transparent', flexShrink: 0 }} />
+                      <span style={{ fontSize: 13, color: 'var(--foreground)' }}>{labels[val]}</span>
+                    </button>
+                  );
+                })}
+                <button
+                  disabled={!reportReason || reportSending}
+                  onClick={async () => {
+                    if (!reportReason || reportSending || !user || !otherUserId) return;
+                    const msg = messages.find(m => m.id === reportingMsgId);
+                    setReportSending(true);
+                    try {
+                      const res = await fetch('/api/report', {
+                        method:  'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body:    JSON.stringify({ contentId: String(reportingMsgId), contentType: 'dm', reason: reportReason, contentSnapshot: msg?.text ?? '', reportedUserId: otherUserId, reporterId: user.id }),
+                      });
+                      if (res.ok || res.status === 409) setReportDone(true);
+                    } catch (e) { console.error('[chat] report error:', e); }
+                    finally { setReportSending(false); }
+                  }}
+                  style={{ width: '100%', padding: '10px 0', borderRadius: 10, marginTop: 4, background: reportReason ? 'rgba(255,80,80,0.85)' : 'rgba(255,255,255,0.10)', border: 'none', fontSize: 13, fontWeight: 700, color: '#fff', cursor: reportReason ? 'pointer' : 'default', opacity: reportSending ? 0.7 : 1 }}
+                >
+                  {reportSending ? '送信中...' : '通報する'}
+                </button>
+              </>
+            )}
+          </div>
+        </>
+      )}
+
       {/* ── メッセージエリア ──────────────────────────────────────── */}
       <div
         className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-0.5"
@@ -761,6 +859,11 @@ export default function ChatDetailPage() {
               className={`flex items-end gap-1.5 mt-0.5 ${isMe ? 'flex-row-reverse' : 'flex-row'} ${
                 !showAvatar && !isMe ? 'pl-9' : ''
               }`}
+              onTouchStart={!isMe ? () => {
+                longPressTimerRef.current = setTimeout(() => { setReportingMsgId(msg.id); setReportReason(''); setReportDone(false); }, 600);
+              } : undefined}
+              onTouchEnd={!isMe ? () => { if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; } } : undefined}
+              onTouchMove={!isMe ? () => { if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; } } : undefined}
             >
               {/* 相手アバター */}
               {!isMe && (

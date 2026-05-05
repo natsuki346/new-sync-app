@@ -88,7 +88,8 @@
       "Bash(iconv -f UTF-16LE -t UTF-8 \"/c/Users/81908/sync-v5/src/lib/database.types.ts\")",
       "PowerShell(Stop-Process *)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\81908\\\\new-sync-app\" -Directory)",
-      "Bash(Select-Object Name)"
+      "Bash(Select-Object Name)",
+      "Skill(claude-api)"
     ]
   }
 }

@@ -121,11 +121,15 @@ function TapModal({ menu, onClose }: {
 }) {
   const router = useRouter();
   const { user } = useAuth();
-  const [flyEmoji,  setFlyEmoji]  = useState<{ emoji: string; x: number; y: number } | null>(null);
-  const [dmMode,    setDmMode]    = useState(false);
-  const [dmText,    setDmText]    = useState('');
-  const [dmSending, setDmSending] = useState(false);
-  const [dmError,   setDmError]   = useState('');
+  const [flyEmoji,      setFlyEmoji]      = useState<{ emoji: string; x: number; y: number } | null>(null);
+  const [dmMode,        setDmMode]        = useState(false);
+  const [dmText,        setDmText]        = useState('');
+  const [dmSending,     setDmSending]     = useState(false);
+  const [dmError,       setDmError]       = useState('');
+  const [reportMode,    setReportMode]    = useState(false);
+  const [reportReason,  setReportReason]  = useState('');
+  const [reportSending, setReportSending] = useState(false);
+  const [reportDone,    setReportDone]    = useState(false);
 
   function handleReact(emoji: string, e: React.MouseEvent<HTMLButtonElement>) {
     const r = e.currentTarget.getBoundingClientRect();
@@ -212,6 +216,33 @@ function TapModal({ menu, onClose }: {
     }
   }
 
+  async function handleSubmitReport() {
+    if (!reportReason || reportSending || !user || menu.userId.startsWith('mock-')) return;
+    setReportSending(true);
+    try {
+      const res = await fetch('/api/report', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contentId:       menu.userId,
+          contentType:     'bubble',
+          reason:          reportReason,
+          contentSnapshot: menu.text,
+          reportedUserId:  menu.userId,
+          reporterId:      user.id,
+        }),
+      });
+      if (res.status === 409) { setReportDone(true); return; }
+      if (!res.ok) throw new Error('report failed');
+      setReportDone(true);
+      setTimeout(onClose, 1800);
+    } catch (e) {
+      console.error('[bubble-v2] report error:', e);
+    } finally {
+      setReportSending(false);
+    }
+  }
+
   // コンテナ（data-bubble-container）の実測 rect を取得
   // position:fixed の子要素はこのコンテナ基準で座標が決まる
   const containerEl = typeof document !== 'undefined'
@@ -262,6 +293,7 @@ function TapModal({ menu, onClose }: {
           backdropFilter:       'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
           animation:            'menuPopIn 0.18s cubic-bezier(0.34,1.56,0.64,1) forwards',
+          overflow:             'hidden',
         }}
         onClick={e => e.stopPropagation()}
       >
@@ -351,12 +383,52 @@ function TapModal({ menu, onClose }: {
             {/* プロフィールを見る */}
             <button
               onClick={() => { onClose(); router.push(`/profile/${menu.userId}`); }}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 12px', borderRadius: 12, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', boxSizing: 'border-box' }}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 12px', borderRadius: 12, marginBottom: 8, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', boxSizing: 'border-box' }}
             >
               <span style={{ fontSize: 15 }}>👤</span>
               <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.80)' }}>プロフィールを見る</span>
             </button>
+
+            {/* 通報する */}
+            {!menu.userId.startsWith('mock-') && (
+              <button
+                onClick={() => setReportMode(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 12px', borderRadius: 12, background: 'rgba(255,80,80,0.08)', border: '1px solid rgba(255,80,80,0.20)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent', boxSizing: 'border-box' }}
+              >
+                <span style={{ fontSize: 15 }}>🚩</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,100,100,0.90)' }}>通報する</span>
+              </button>
+            )}
           </>
+        )}
+
+        {/* ── 通報モード（カード内で切り替え） ── */}
+        {reportMode && (
+          <div style={{ position: 'absolute', inset: 0, borderRadius: 20, background: '#0d0d1a', padding: 14, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,100,100,0.90)' }}>🚩 通報する</div>
+                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.38)' }}>理由を選択してください</div>
+              </div>
+              <button onClick={() => { setReportMode(false); setReportReason(''); setReportDone(false); }} style={{ width: 24, height: 24, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', border: 'none', fontSize: 11, color: 'rgba(255,255,255,0.55)', cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}>✕</button>
+            </div>
+            {(['spam', 'inappropriate', 'harassment', 'other'] as const).map((val) => {
+              const labels: Record<string, string> = { spam: 'スパム', inappropriate: '不適切なコンテンツ', harassment: '嫌がらせ', other: 'その他' };
+              return (
+                <button key={val} onClick={() => setReportReason(val)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', borderRadius: 10, marginBottom: 6, background: reportReason === val ? 'rgba(255,80,80,0.18)' : 'rgba(255,255,255,0.05)', border: `1px solid ${reportReason === val ? 'rgba(255,80,80,0.45)' : 'rgba(255,255,255,0.10)'}`, cursor: 'pointer', WebkitTapHighlightColor: 'transparent', textAlign: 'left', boxSizing: 'border-box' }}>
+                  <span style={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${reportReason === val ? '#ff5050' : 'rgba(255,255,255,0.3)'}`, background: reportReason === val ? '#ff5050' : 'transparent', flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.88)' }}>{labels[val]}</span>
+                </button>
+              );
+            })}
+            {reportDone ? (
+              <div style={{ textAlign: 'center', padding: '10px 0', fontSize: 13, color: '#4ade80', fontWeight: 600 }}>✓ 通報を受け付けました</div>
+            ) : (
+              <button onClick={handleSubmitReport} disabled={!reportReason || reportSending} style={{ width: '100%', padding: '10px 0', borderRadius: 10, marginTop: 4, background: reportReason ? 'rgba(255,80,80,0.85)' : 'rgba(255,255,255,0.10)', border: 'none', fontSize: 13, fontWeight: 700, color: '#fff', cursor: reportReason ? 'pointer' : 'default', WebkitTapHighlightColor: 'transparent', opacity: reportSending ? 0.7 : 1 }}>
+                {reportSending ? '送信中...' : '通報する'}
+              </button>
+            )}
+          </div>
         )}
       </div>
     </>
@@ -841,7 +913,26 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
             };
           });
 
-        setLivePeople(people);
+        // モデレーション：各ユーザーの最新メッセージをスキャンし flagged を除外
+        const moderated: LivePerson[] = [];
+        await Promise.allSettled(
+          people.map(async (p) => {
+            const sampleText = p.messages.find(m => m !== '...' && m.length > 0);
+            if (!sampleText) { moderated.push(p); return; }
+            try {
+              const res = await fetch('/api/moderate', {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ text: sampleText, contentId: p.userId, contentType: 'bubble' }),
+              });
+              const data = await res.json() as { flagged: boolean };
+              if (!data.flagged) moderated.push(p);
+            } catch {
+              moderated.push(p); // エラー時は表示継続
+            }
+          })
+        );
+        setLivePeople(moderated);
       } catch (e) {
         console.error('[bubble-v2] livePeople fetch error:', e);
       }
