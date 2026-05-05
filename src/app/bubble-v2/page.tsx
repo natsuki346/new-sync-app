@@ -1023,15 +1023,30 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
   // タップモーダル
   const [tapMenu, setTapMenu] = useState<TapMenu | null>(null);
 
-  // 実データがあれば使用、なければ EMOJI_POOL ベースのフォールバック
-  const displayPeople: LivePerson[] = livePeople.length > 0
-    ? livePeople
-    : EMOJI_POOL.map((emoji, i) => ({
-        id:       i,
-        userId:   `mock-${i + 1}`,
-        emoji,
-        messages: ['...', '...', '...'] as [string, string, string],
-      }));
+  // 実データがあれば使用、なければリアルなモックフォールバック
+  const MOCK_FALLBACK: LivePerson[] = [
+    { id:  0, userId: 'mock-1',  emoji: '😴', messages: ['眠れない',         '夜型すぎる',       '明日やばい'] },
+    { id:  1, userId: 'mock-2',  emoji: '🎤', messages: ['誰かカラオケ行かない？', 'ひとりカラオケ最高', '声出しすぎた'] },
+    { id:  2, userId: 'mock-3',  emoji: '☕', messages: ['コーヒー飲みすぎた', 'カフェにいる',      '眠気消えない'] },
+    { id:  3, userId: 'mock-4',  emoji: '🍜', messages: ['お腹すいた',         'ラーメン食べたい',  '深夜飯はやばい'] },
+    { id:  4, userId: 'mock-5',  emoji: '📚', messages: ['勉強したくない',     'レポートやばい',   '現実逃避中'] },
+    { id:  5, userId: 'mock-6',  emoji: '🎬', messages: ['映画見たい',         'Netflixどれ見る？', 'おすすめ教えて'] },
+    { id:  6, userId: 'mock-7',  emoji: '🌙', messages: ['今日暇すぎる',       '何してる？',        '誰かいる？'] },
+    { id:  7, userId: 'mock-8',  emoji: '🎵', messages: ['推しのライブ最高だった', '神曲きた',      'ずっと聴いてる'] },
+    { id:  8, userId: 'mock-9',  emoji: '🚶', messages: ['散歩してる',         '夜風気持ちいい',    'どこ歩こう'] },
+    { id:  9, userId: 'mock-10', emoji: '🐱', messages: ['猫なでたい',         'ねこカフェ行きたい', 'もふもふ恋しい'] },
+    { id: 10, userId: 'mock-11', emoji: '🍕', messages: ['ピザ食べたい',       '一人で頼むの多い？', 'チーズ最強'] },
+    { id: 11, userId: 'mock-12', emoji: '🌸', messages: ['春眠い',             '花粉つらい',        '外出たくない'] },
+    { id: 12, userId: 'mock-13', emoji: '🎮', messages: ['ゲームしよ',         '対戦相手いない？',  'クリアできん'] },
+    { id: 13, userId: 'mock-14', emoji: '🏃', messages: ['走ってきた',         '筋肉痛やばい',      '明日もがんばる'] },
+    { id: 14, userId: 'mock-15', emoji: '🌃', messages: ['夜景きれい',         'ひとりでいる',      'なんか感傷的'] },
+    { id: 15, userId: 'mock-16', emoji: '🍦', messages: ['アイス食べたい',     '夜中のスイーツ罪悪感', 'まあいっか'] },
+    { id: 16, userId: 'mock-17', emoji: '📱', messages: ['SNS見すぎた',        '目が疲れた',        'デジタルデトックスしたい'] },
+    { id: 17, userId: 'mock-18', emoji: '🎸', messages: ['弾き語りしたい',     '曲作ってる',        'スタジオ行きたい'] },
+    { id: 18, userId: 'mock-19', emoji: '🌊', messages: ['海行きたい',         '波の音聞きたい',    '夏早く来て'] },
+    { id: 19, userId: 'mock-20', emoji: '✨', messages: ['なんかいい日だった', 'ちょっと幸せ',      '今日に感謝'] },
+  ];
+  const displayPeople: LivePerson[] = livePeople.length > 0 ? livePeople : MOCK_FALLBACK;
 
   function openModal(p: LivePerson, clientX: number, clientY: number, text: string) {
     setTapMenu({ personId: p.id, personEmoji: p.emoji, text, clientX, clientY, userId: p.userId });
@@ -1184,16 +1199,17 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
   const cy = h / 2;
 
   const positions = useMemo(() => {
-    const PADDING = 30;
-    const MIN_DIST_SELF = 160;
+    const PADDING      = 30;
+    const OVERFLOW     = 300; // ドラッグで見える範囲（3倍拡張）
+    const MIN_DIST_SELF  = 160;
     const MIN_DIST_OTHER = 85;
-    const MAX_TRIES = 200;
+    const MAX_TRIES    = 200;
     const result: { x: number; y: number; ring: 1 | 2 }[] = [];
 
     for (let i = 0; i < 29; i++) {
       for (let t = 0; t < MAX_TRIES; t++) {
-        const x = PADDING + Math.random() * (w - PADDING * 2);
-        const y = PADDING + Math.random() * (h - PADDING * 2);
+        const x = -OVERFLOW + PADDING + Math.random() * (w + OVERFLOW * 2 - PADDING * 2);
+        const y = -OVERFLOW + PADDING + Math.random() * (h + OVERFLOW * 2 - PADDING * 2);
         if (Math.hypot(x - cx, y - cy) < MIN_DIST_SELF) continue;
         if (result.some(p => Math.hypot(p.x - x, p.y - y) < MIN_DIST_OTHER)) continue;
         result.push({ x, y, ring: (i < 10 ? 1 : 2) as 1 | 2 });
@@ -1266,7 +1282,7 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
         {ready && (
           <motion.div
             drag
-            dragConstraints={{ top: -100, bottom: 100, left: -100, right: 100 }}
+            dragConstraints={{ top: -300, bottom: 300, left: -300, right: 300 }}
             dragElastic={0.05}
             dragMomentum={true}
             style={{ position: 'absolute', inset: 0, touchAction: 'none' }}

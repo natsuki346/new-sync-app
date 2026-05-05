@@ -3,16 +3,16 @@ import { NextRequest, NextResponse } from 'next/server';
 export async function POST(req: NextRequest) {
   const body = await req.json() as {
     contentId?:       string;
-    contentType?:     'bubble' | 'dm';
+    contentType?:     'bubble' | 'dm' | 'post' | 'profile';
     reason?:          string;
     contentSnapshot?: string;
-    reportedUserId?:  string;
+    reportedUserId?:  string | null;
     reporterId?:      string;
   };
 
   const { contentId, contentType, reason, contentSnapshot, reportedUserId, reporterId } = body;
 
-  if (!contentId || !contentType || !reason || !reportedUserId) {
+  if (!contentId || !contentType || !reason) {
     return NextResponse.json({ error: '必須パラメータが不足しています' }, { status: 400 });
   }
 

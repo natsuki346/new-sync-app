@@ -240,13 +240,19 @@ export default function FriendProfilePage() {
     setMoreSheetOpen(false);
     if (user && profileUser) {
       try {
-        await (supabase as any).from('reports').insert({
-          reporter_id: user.id,
-          reported_id: profileUser.id,
-          reason,
-          created_at: new Date().toISOString(),
+        await fetch('/api/report', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({
+            contentId:       profileUser.id,
+            contentType:     'profile',
+            reason,
+            contentSnapshot: profileUser.display_name || profileUser.username,
+            reportedUserId:  profileUser.id,
+            reporterId:      user.id,
+          }),
         });
-      } catch { /* テーブルが存在しない場合も通報受付済みとして扱う */ }
+      } catch { /* エラー時も通報受付済みとして扱う */ }
     }
     showToast('通報を受け付けました');
   }

@@ -15,6 +15,7 @@ const DEV_AUTO_REPLY = false;
 
 type ChatMsg = {
   id: number;
+  supabaseId?: string; // Supabase messages.id（削除に使用）
   from: 'me' | 'them';
   text?: string;
   image?: string;
@@ -115,6 +116,13 @@ export default function ChatDetailPage() {
   type PendingMsg = { id: string; text: string; isHidden: boolean };
   const [convStatus,   setConvStatus]   = useState<'pending' | 'approved' | 'blocked' | null>(null);
   const [pendingMsgs,  setPendingMsgs]  = useState<PendingMsg[]>([]);
+
+  async function handleDeleteMessage(msg: ChatMsg) {
+    if (!msg.supabaseId) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from('messages') as any).delete().eq('id', msg.supabaseId);
+    setMessages(prev => prev.filter(m => m.id !== msg.id));
+  }
 
   async function updateConvStatus(newStatus: 'approved' | 'blocked') {
     if (!convId) return;
@@ -368,6 +376,7 @@ export default function ChatDetailPage() {
 
       const msgs: ChatMsg[] = (data ?? []).map((row: any, i: number) => ({
         id:            i,
+        supabaseId:    row.id as string,
         from:          row.user_id === user.id ? 'me' as const : 'them' as const,
         text:          row.message_type === 'text'  ? (row.content   ?? undefined) : undefined,
         image:         row.message_type === 'image' ? (row.image_url ?? undefined) : undefined,
@@ -969,11 +978,14 @@ export default function ChatDetailPage() {
               className={`flex items-end gap-1.5 mt-0.5 ${isMe ? 'flex-row-reverse' : 'flex-row'} ${
                 !showAvatar && !isMe ? 'pl-9' : ''
               }`}
-              onTouchStart={!isMe ? () => {
-                longPressTimerRef.current = setTimeout(() => { setReportingMsgId(msg.id); setReportReason(''); setReportDone(false); }, 600);
-              } : undefined}
-              onTouchEnd={!isMe ? () => { if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; } } : undefined}
-              onTouchMove={!isMe ? () => { if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; } } : undefined}
+              onTouchStart={() => {
+                longPressTimerRef.current = setTimeout(() => {
+                  if (isMe) { handleDeleteMessage(msg); }
+                  else { setReportingMsgId(msg.id); setReportReason(''); setReportDone(false); }
+                }, 600);
+              }}
+              onTouchEnd={() => { if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; } }}
+              onTouchMove={() => { if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; } }}
             >
               {/* 相手アバター */}
               {!isMe && (

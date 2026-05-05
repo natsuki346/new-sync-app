@@ -1026,6 +1026,41 @@ export default function HomePage() {
   const [timelineFilter, setTimelineFilter] = useState<string[]>([]);
   const [friendsFilter,  setFriendsFilter]  = useState<string[]>([]);
   const [drawerOpen,    setDrawerOpen]    = useState(false);
+
+  // ── 投稿メニュー（通報・削除）──────────────────────────────────
+  const [postMenuId,         setPostMenuId]         = useState<string | null>(null);
+  const [postReportId,       setPostReportId]       = useState<string | null>(null);
+  const [postReportText,     setPostReportText]     = useState('');
+  const [postReportReason,   setPostReportReason]   = useState('');
+  const [postReportSending,  setPostReportSending]  = useState(false);
+  const [postReportDone,     setPostReportDone]     = useState(false);
+
+  async function handleDeletePost(postId: string) {
+    setPostMenuId(null);
+    await (supabase.from('posts') as any).delete().eq('id', postId);
+    setFeedPosts(prev => prev.filter(p => p.id !== postId));
+    setFriendsPostsState(prev => prev.filter(p => p.id !== postId));
+  }
+
+  async function handleReportPostSubmit() {
+    if (!postReportReason || postReportSending || !user) return;
+    setPostReportSending(true);
+    try {
+      const res = await fetch('/api/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contentId: postReportId,
+          contentType: 'post',
+          reason: postReportReason,
+          contentSnapshot: postReportText,
+          reporterId: user.id,
+        }),
+      });
+      if (res.ok || res.status === 409) setPostReportDone(true);
+    } catch (e) { console.error('[home] report post error:', e); }
+    finally { setPostReportSending(false); }
+  }
   const [replyPost,     setReplyPost]     = useState<Post | null>(null);
   const [replyOpen,     setReplyOpen]     = useState(false);
   const [modalOpen,     setModalOpen]     = useState(false);
@@ -1529,19 +1564,40 @@ export default function HomePage() {
                 <NoHashtagsState onSetup={() => router.push('/onboarding?resume=true')} />
               ) : timelinePosts.length > 0 ? (
                 timelinePosts.map((post) => (
-                  <PostCard
-                    key={post.id}
-                    post={post}
-                    onReply={openReply}
-                    onHashtagClick={handleHashtagClick}
-                    onUserClick={() => { const u = post.handle.replace('@', ''); router.push(u === 'you' ? '/profile' : `/profile/${u}`); }}
-                    onReact={(emoji) => handleReact(post.id, emoji, post.hashtags)}
-                    initialReactedEmoji={myReactionsMap[post.id] ?? null}
-                    reactionCount={reactionCountsMap[post.id] ?? 0}
-                    cardColor={cardColor || undefined}
-                    hashtagBorderColor={hashtagColor || undefined}
-                    isReplyLocked={post.hashtags.length > 0 && !post.hashtags.some(isTagEngaged)}
-                  />
+                  <div key={post.id} style={{ position: 'relative' }}>
+                    <button
+                      onClick={() => setPostMenuId(postMenuId === post.id ? null : post.id)}
+                      style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, background: 'none', border: 'none', fontSize: 18, color: 'var(--muted)', cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}
+                    >···</button>
+                    {postMenuId === post.id && (
+                      <>
+                        <div style={{ position: 'fixed', inset: 0, zIndex: 11 }} onClick={() => setPostMenuId(null)} />
+                        <div style={{ position: 'absolute', top: 36, right: 10, zIndex: 12, background: 'var(--surface)', border: '1px solid var(--surface-2)', borderRadius: 12, overflow: 'hidden', minWidth: 140, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
+                          {post.handle === '@you' ? (
+                            <button onClick={() => handleDeletePost(post.id)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '12px 16px', background: 'none', border: 'none', fontSize: 13, color: '#E84040', cursor: 'pointer', textAlign: 'left' }}>
+                              🗑️ 削除
+                            </button>
+                          ) : (
+                            <button onClick={() => { setPostMenuId(null); setPostReportId(post.id); setPostReportText(post.content ?? ''); setPostReportReason(''); setPostReportDone(false); }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '12px 16px', background: 'none', border: 'none', fontSize: 13, color: '#E84040', cursor: 'pointer', textAlign: 'left' }}>
+                              🚩 通報
+                            </button>
+                          )}
+                        </div>
+                      </>
+                    )}
+                    <PostCard
+                      post={post}
+                      onReply={openReply}
+                      onHashtagClick={handleHashtagClick}
+                      onUserClick={() => { const u = post.handle.replace('@', ''); router.push(u === 'you' ? '/profile' : `/profile/${u}`); }}
+                      onReact={(emoji) => handleReact(post.id, emoji, post.hashtags)}
+                      initialReactedEmoji={myReactionsMap[post.id] ?? null}
+                      reactionCount={reactionCountsMap[post.id] ?? 0}
+                      cardColor={cardColor || undefined}
+                      hashtagBorderColor={hashtagColor || undefined}
+                      isReplyLocked={post.hashtags.length > 0 && !post.hashtags.some(isTagEngaged)}
+                    />
+                  </div>
                 ))
               ) : (
                 <EmptyState message="No posts for the selected tags" />
@@ -1554,19 +1610,40 @@ export default function HomePage() {
           <div key="friends" className="feed-animate">
             {friendsPostsState.length > 0 ? (
               friendsPostsState.map((post) => (
-                <PostCard
-                  key={post.id}
-                  post={post}
-                  onReply={openReply}
-                  onHashtagClick={handleHashtagClick}
-                  onUserClick={() => { const u = post.handle.replace('@', ''); router.push(u === 'you' ? '/profile' : `/profile/${u}`); }}
-                  onReact={(emoji) => handleReact(post.id, emoji, post.hashtags)}
-                  initialReactedEmoji={myReactionsMap[post.id] ?? null}
-                  reactionCount={reactionCountsMap[post.id] ?? 0}
-                  cardColor={cardColor || undefined}
-                  hashtagBorderColor={hashtagColor || undefined}
-                  isReplyLocked={post.hashtags.length > 0 && !post.hashtags.some(isTagEngaged)}
-                />
+                <div key={post.id} style={{ position: 'relative' }}>
+                  <button
+                    onClick={() => setPostMenuId(postMenuId === post.id ? null : post.id)}
+                    style={{ position: 'absolute', top: 10, right: 10, zIndex: 10, background: 'none', border: 'none', fontSize: 18, color: 'var(--muted)', cursor: 'pointer', padding: '4px 8px', lineHeight: 1 }}
+                  >···</button>
+                  {postMenuId === post.id && (
+                    <>
+                      <div style={{ position: 'fixed', inset: 0, zIndex: 11 }} onClick={() => setPostMenuId(null)} />
+                      <div style={{ position: 'absolute', top: 36, right: 10, zIndex: 12, background: 'var(--surface)', border: '1px solid var(--surface-2)', borderRadius: 12, overflow: 'hidden', minWidth: 140, boxShadow: '0 4px 20px rgba(0,0,0,0.4)' }}>
+                        {post.handle === '@you' ? (
+                          <button onClick={() => handleDeletePost(post.id)} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '12px 16px', background: 'none', border: 'none', fontSize: 13, color: '#E84040', cursor: 'pointer', textAlign: 'left' }}>
+                            🗑️ 削除
+                          </button>
+                        ) : (
+                          <button onClick={() => { setPostMenuId(null); setPostReportId(post.id); setPostReportText(post.content ?? ''); setPostReportReason(''); setPostReportDone(false); }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '12px 16px', background: 'none', border: 'none', fontSize: 13, color: '#E84040', cursor: 'pointer', textAlign: 'left' }}>
+                            🚩 通報
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+                  <PostCard
+                    post={post}
+                    onReply={openReply}
+                    onHashtagClick={handleHashtagClick}
+                    onUserClick={() => { const u = post.handle.replace('@', ''); router.push(u === 'you' ? '/profile' : `/profile/${u}`); }}
+                    onReact={(emoji) => handleReact(post.id, emoji, post.hashtags)}
+                    initialReactedEmoji={myReactionsMap[post.id] ?? null}
+                    reactionCount={reactionCountsMap[post.id] ?? 0}
+                    cardColor={cardColor || undefined}
+                    hashtagBorderColor={hashtagColor || undefined}
+                    isReplyLocked={post.hashtags.length > 0 && !post.hashtags.some(isTagEngaged)}
+                  />
+                </div>
               ))
             ) : (
               <EmptyState message="No posts for the selected tags" />
@@ -1575,6 +1652,37 @@ export default function HomePage() {
         )}
 
       </main>
+
+      {/* ── 投稿通報モーダル ─────────────────────────────────────── */}
+      {postReportId && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 300 }} onClick={() => setPostReportId(null)} />
+          <div style={{ position: 'fixed', bottom: 80, left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 32px)', maxWidth: 360, zIndex: 301, background: 'var(--surface)', border: '1px solid var(--surface-2)', borderRadius: 16, padding: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#E84040', flex: 1 }}>🚩 投稿を通報する</span>
+              <button onClick={() => setPostReportId(null)} style={{ background: 'none', border: 'none', fontSize: 16, color: 'var(--muted)', cursor: 'pointer' }}>✕</button>
+            </div>
+            {postReportDone ? (
+              <div style={{ textAlign: 'center', padding: '12px 0', fontSize: 13, color: '#4ade80', fontWeight: 600 }}>✓ 通報を受け付けました</div>
+            ) : (
+              <>
+                {(['spam', 'inappropriate', 'harassment', 'other'] as const).map(val => {
+                  const labels: Record<string, string> = { spam: 'スパム', inappropriate: '不適切なコンテンツ', harassment: '嫌がらせ', other: 'その他' };
+                  return (
+                    <button key={val} onClick={() => setPostReportReason(val)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', borderRadius: 10, marginBottom: 6, background: postReportReason === val ? 'rgba(232,64,64,0.15)' : 'rgba(255,255,255,0.04)', border: `1px solid ${postReportReason === val ? 'rgba(232,64,64,0.45)' : 'var(--surface-2)'}`, cursor: 'pointer', textAlign: 'left', boxSizing: 'border-box' }}>
+                      <span style={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${postReportReason === val ? '#E84040' : 'rgba(255,255,255,0.3)'}`, background: postReportReason === val ? '#E84040' : 'transparent', flexShrink: 0 }} />
+                      <span style={{ fontSize: 13, color: 'var(--foreground)' }}>{labels[val]}</span>
+                    </button>
+                  );
+                })}
+                <button disabled={!postReportReason || postReportSending} onClick={handleReportPostSubmit} style={{ width: '100%', padding: '10px 0', borderRadius: 10, marginTop: 4, background: postReportReason ? '#E84040' : 'rgba(255,255,255,0.10)', border: 'none', fontSize: 13, fontWeight: 700, color: '#fff', cursor: postReportReason ? 'pointer' : 'default', opacity: postReportSending ? 0.7 : 1 }}>
+                  {postReportSending ? '送信中...' : '通報する'}
+                </button>
+              </>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
