@@ -744,6 +744,8 @@ function CreateScreen({ onConfirm, onBack }: { onConfirm: (url: string) => void;
   const [generated, setGenerated] = useState<string | null>(null);
   const [loading, setLoading]     = useState(false);
   const fileInputRef              = useRef<HTMLInputElement>(null);
+  const [showOpps,    setShowOpps]    = useState(false);
+  const [oppsMessage, setOppsMessage] = useState('');
 
   function handleSelect(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
@@ -765,9 +767,9 @@ function CreateScreen({ onConfirm, onBack }: { onConfirm: (url: string) => void;
       const res  = await fetch('/api/generate-meme', { method: 'POST', body: fd });
       const data = await res.json();
       if (data.url) setGenerated(data.url);
-      else alert(data.error ?? '生成に失敗しました');
+      else { setOppsMessage(data.error ?? '生成に失敗しました'); setShowOpps(true); }
     } catch {
-      alert('通信エラーが発生しました');
+      setOppsMessage('通信エラーが発生しました'); setShowOpps(true);
     } finally {
       setLoading(false);
     }
@@ -779,6 +781,19 @@ function CreateScreen({ onConfirm, onBack }: { onConfirm: (url: string) => void;
 
   return (
     <div style={{ position: 'relative', height: '100dvh', background: '#0a0a1a', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 28px', gap: 28, overflow: 'hidden' }}>
+      {/* ── Opps! モーダル ── */}
+      {showOpps && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)' }}>
+          <div style={{ background: '#1a1a2e', border: '2px solid #FF1A1A', borderRadius: 20, padding: '32px 24px', textAlign: 'center', maxWidth: 300, width: '80%' }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🚫</div>
+            <div style={{ fontSize: 32, fontWeight: 'bold', color: '#FF1A1A', marginBottom: 8 }}>Opps!</div>
+            <div style={{ color: '#fff', fontSize: 14, marginBottom: 24 }}>{oppsMessage}</div>
+            <button onClick={() => setShowOpps(false)} style={{ background: '#FF1A1A', color: '#fff', border: 'none', borderRadius: 12, padding: '10px 32px', fontWeight: 'bold', fontSize: 16, cursor: 'pointer' }}>
+              見直す
+            </button>
+          </div>
+        </div>
+      )}
       {onBack && (
         <button
           onClick={onBack}
@@ -877,6 +892,9 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
   const BRIGHT = useMemo(() => Array.from({ length: 18 }, (_, i) => ({ id: 155+i, left: (Math.sin(i*9.432+1.8)*0.5+0.5)*100, top: (Math.sin(i*4.567+0.3)*0.5+0.5)*80, size: 1.9+(i%4)*0.38, op: 0.6+(i%4)*0.08,  dur: 2.2+(i%8)*0.35, delay: (i%13)*0.52 })), []);
   const NEBULA = useMemo(() => Array.from({ length: 6  }, (_, i) => ({ id: i, left: (Math.sin(i*4.123+0.7)*0.5+0.5)*100, top: (Math.sin(i*2.987+1.4)*0.5+0.5)*85, size: 90+(i%4)*62, color: ['rgba(70,30,160,0.055)','rgba(30,18,110,0.045)','rgba(90,50,190,0.06)','rgba(18,25,100,0.05)','rgba(50,18,130,0.045)','rgba(70,50,190,0.065)'][i] })), []);
   const CLOUDS = useMemo(() => Array.from({ length: 7  }, (_, i) => ({ id: i, left: (Math.sin(i*6.28+0.4)*0.5+0.5)*100, top: 20+(Math.sin(i*3.14+1.1)*0.5+0.5)*55, w: 100+(i%4)*55, h: 26+(i%3)*12 })), []);
+
+  const [showOpps,    setShowOpps]    = useState(false);
+  const [oppsMessage, setOppsMessage] = useState('');
 
   // ライブユーザーデータ（profiles から実ユーザーを取得）
   const [livePeople, setLivePeople] = useState<LivePerson[]>([]);
@@ -1098,7 +1116,8 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
       });
       const { blocked, reason } = await scanRes.json();
       if (blocked) {
-        alert(`投稿できません：${reason}`);
+        setOppsMessage(reason || '他者への攻撃的表現');
+        setShowOpps(true);
         return;
       }
     } catch (e) {
@@ -1187,6 +1206,19 @@ function BubbleScreen({ selfImage, onChangeMeme, user, profile: _profile, myBubb
 
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: '#0a0a1a' }}>
+      {/* ── Opps! モーダル ── */}
+      {showOpps && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.7)' }}>
+          <div style={{ background: '#1a1a2e', border: '2px solid #FF1A1A', borderRadius: 20, padding: '32px 24px', textAlign: 'center', maxWidth: 300, width: '80%' }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🚫</div>
+            <div style={{ fontSize: 32, fontWeight: 'bold', color: '#FF1A1A', marginBottom: 8 }}>Opps!</div>
+            <div style={{ color: '#fff', fontSize: 14, marginBottom: 24 }}>{oppsMessage}</div>
+            <button onClick={() => setShowOpps(false)} style={{ background: '#FF1A1A', color: '#fff', border: 'none', borderRadius: 12, padding: '10px 32px', fontWeight: 'bold', fontSize: 16, cursor: 'pointer' }}>
+              見直す
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── 時間帯背景（bubble/page.tsx と同一） ── */}
       <div style={{ position: 'absolute', inset: 0, zIndex: 0, overflow: 'hidden', pointerEvents: 'none' }}>
